@@ -25,6 +25,8 @@ _PROJECT_ROOT = _PKG_DIR.parent
 
 ICON_CANDIDATES = [
     _PROJECT_ROOT / "assets" / "icon.png",
+    _PROJECT_ROOT / "assets" / "icon-256.png",
+    _PROJECT_ROOT / "assets" / "icon-48.png",
     _PKG_DIR / "assets" / "icon.png",
 ]
 

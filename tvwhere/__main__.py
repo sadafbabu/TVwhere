@@ -2,7 +2,7 @@ import sys
 import tkinter as tk
 
 from tvwhere.app import TVwhereApp
-from tvwhere.config import ICON_PATH
+from tvwhere.icons import apply_window_icon
 
 
 def main():
@@ -16,12 +16,7 @@ def main():
     except Exception:
         pass
 
-    if ICON_PATH:
-        try:
-            root._tvwhere_icon = tk.PhotoImage(file=str(ICON_PATH))
-            root.iconphoto(True, root._tvwhere_icon)
-        except Exception:
-            pass
+    root._tvwhere_icon = apply_window_icon(root)
 
     app = TVwhereApp(root)
     root.protocol("WM_DELETE_WINDOW", app.on_close)

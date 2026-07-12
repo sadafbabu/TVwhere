@@ -1,1 +1,3 @@
-# TVwhere — version 1.1.0
+"""TVwhere — minimalist cross-platform IPTV player."""
+
+__version__ = "1.1.0"

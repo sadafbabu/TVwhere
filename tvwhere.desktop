@@ -1,10 +1,12 @@
 [Desktop Entry]
-Name=TVwhere
-Comment=Minimalist IPTV Player
-Exec=python3 -m tvwhere
-Icon=assets/icon.png
-Terminal=false
+Version=1.1
 Type=Application
+Name=TVwhere
+GenericName=IPTV Player
+Comment=Minimalist IPTV Player
+Exec=env PYTHONPATH=/home/sadaf/TVwhere python3 -m tvwhere
+Icon=/home/sadaf/TVwhere/assets/icon.png
+Terminal=false
 Categories=AudioVideo;Video;Player;
 Keywords=tv;iptv;live;stream;
 StartupWMClass=tvwhere

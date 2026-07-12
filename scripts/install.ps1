@@ -1,4 +1,4 @@
-# Install TVwhere launcher on Windows.
+# Install TVwhere on Windows.
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -9,23 +9,18 @@ New-Item -ItemType Directory -Force -Path $BinDir | Out-Null
 
 @"
 @echo off
+set PYTHONPATH=$Root;%PYTHONPATH%
 cd /d "$Root"
 py -m tvwhere %* 2>nul || python -m tvwhere %*
 "@ | Set-Content -Path $Launcher -Encoding ASCII
 
-# Add to user PATH if missing
+try { pip install -e $Root --quiet 2>$null } catch {}
+
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -notlike "*$BinDir*") {
     [Environment]::SetEnvironmentVariable("Path", "$BinDir;$userPath", "User")
-    $env:Path = "$BinDir;$env:Path"
 }
-
-# Optional pip editable install
-try {
-    pip install -e $Root --quiet 2>$null
-} catch {}
 
 Write-Host "TVwhere installed."
 Write-Host "  Project : $Root"
-Write-Host "  Launch  : tvwhere"
-Write-Host "  Or      : py -m tvwhere  (from project folder)"
+Write-Host "  Icon    : $Root\assets\icon.ico"

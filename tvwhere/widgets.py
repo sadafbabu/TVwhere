@@ -512,9 +512,15 @@ class UrlDialog(tk.Toplevel):
 
     def _ok(self):
         value = self.entry.get().strip()
-        if value and (value.startswith("http://") or value.startswith("https://")):
+        if not value:
+            self.destroy()
+            return
+        if value.startswith("http://") or value.startswith("https://"):
             self.result = value
-        self.destroy()
+            self.destroy()
+            return
+        self.entry.configure(fg="#ff6b6b")
+        self.title("Custom Playlist — invalid URL")
 
     def _cancel(self):
         self.destroy()

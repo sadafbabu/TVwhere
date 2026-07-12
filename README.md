@@ -73,6 +73,20 @@ tvwhere
 | Favorites | `%APPDATA%\tvwhere\` | `~/.config/tvwhere/` |
 | Cache | `%LOCALAPPDATA%\tvwhere\cache\` | `~/.cache/tvwhere/` |
 
+## Branding
+
+App icon and logo live in `assets/`:
+
+- `icon.svg` — source vector (black/gray TV + play)
+- `icon.png` / `icon-*.png` — PNG sizes for Linux desktop
+- `icon.ico` — Windows taskbar / shortcut
+
+Regenerate all sizes:
+
+```bash
+python3 scripts/generate_icons.py
+```
+
 ## Project layout
 
 ```

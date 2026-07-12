@@ -10,8 +10,8 @@ from tvwhere.config import (
     FONTS,
     FavoritesManager,
     ensure_dirs,
-    ICON_PATH,
 )
+from tvwhere.icons import apply_window_icon, load_logo
 from tvwhere.iptv import get_channels_async
 from tvwhere.player import PlayerManager
 from tvwhere.search import filter_channels
@@ -52,27 +52,26 @@ class TVwhereApp:
         self._select_tab("Bangladesh")
 
     def _set_window_icon(self):
-        if not ICON_PATH:
-            return
-        try:
-            self._icon = tk.PhotoImage(file=str(ICON_PATH))
-            self.root.iconphoto(True, self._icon)
-        except Exception:
-            pass
+        self._icon = apply_window_icon(self.root)
 
     def _setup_layout(self):
         self.sidebar = tk.Frame(self.root, bg=THEME["bg_secondary"], width=200)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
 
+        header = tk.Frame(self.sidebar, bg=THEME["bg_secondary"], pady=14)
+        header.pack(fill="x")
+
+        self._logo = load_logo(26)
+        if self._logo:
+            tk.Label(header, image=self._logo, bg=THEME["bg_secondary"]).pack(side="left", padx=(14, 6))
         tk.Label(
-            self.sidebar,
+            header,
             text="TVwhere",
             bg=THEME["bg_secondary"],
             fg=THEME["fg"],
             font=FONTS["title"],
-            pady=18,
-        ).pack(fill="x")
+        ).pack(side="left")
 
         self.sidebar_buttons = {}
         for name in SIDEBAR_TABS:
