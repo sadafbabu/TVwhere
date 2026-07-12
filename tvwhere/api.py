@@ -3,6 +3,7 @@
 import json
 import mimetypes
 import socket
+import sys
 import threading
 import urllib.error
 import urllib.parse
@@ -414,12 +415,21 @@ def get_local_ip() -> str:
         return "127.0.0.1"
 
 
-def run_server(host: str = "0.0.0.0", port: int = 8765):
+def run_server(host: str = "0.0.0.0", port: int = 8765, quiet: bool = False):
     ensure_dirs()
     if not WEB_ROOT.is_dir():
         raise FileNotFoundError(f"Web UI not found: {WEB_ROOT}")
 
-    httpd = ThreadingHTTPServer((host, port), TVwhereAPIHandler)
+    try:
+        httpd = ThreadingHTTPServer((host, port), TVwhereAPIHandler)
+    except OSError as exc:
+        if getattr(exc, "errno", None) == 98 or "Address already in use" in str(exc):
+            if quiet:
+                return
+            print(f"Port {port} already in use — web UI may already be running.", file=sys.stderr)
+            print(f"Open: http://127.0.0.1:{port}", file=sys.stderr)
+            return
+        raise
     lan = get_local_ip()
     print(f"TVwhere Web UI running:")
     print(f"  Local:   http://127.0.0.1:{port}")

@@ -22,12 +22,12 @@ else
   echo "Note: pip install skipped (using PYTHONPATH launcher instead)."
 fi
 
-# Desktop app launcher
+# Desktop app launcher (opens window)
 cat > "${BIN_DIR}/tvwhere" <<EOF
 #!/usr/bin/env bash
 export PYTHONPATH="${ROOT}:\${PYTHONPATH:-}"
 cd "${ROOT}"
-exec python3 -m tvwhere "\$@" 2>/dev/null || exec python -m tvwhere "\$@"
+exec python3 -m tvwhere "\$@" || exec python -m tvwhere "\$@"
 EOF
 chmod +x "${BIN_DIR}/tvwhere"
 
@@ -36,7 +36,7 @@ cat > "${BIN_DIR}/tvwhere-web" <<EOF
 #!/usr/bin/env bash
 export PYTHONPATH="${ROOT}:\${PYTHONPATH:-}"
 cd "${ROOT}"
-exec python3 -m tvwhere --web --open "\$@" 2>/dev/null || exec python -m tvwhere --web --open "\$@"
+exec python3 -m tvwhere --web --open "\$@" || exec python -m tvwhere --web --open "\$@"
 EOF
 chmod +x "${BIN_DIR}/tvwhere-web"
 
@@ -44,12 +44,12 @@ ICON="${ROOT}/assets/icon.png"
 
 cat > "${APP_DIR}/tvwhere.desktop" <<EOF
 [Desktop Entry]
-Version=2.0
+Version=2.2
 Type=Application
 Name=TVwhere
 GenericName=IPTV Player
 Comment=Cross-platform IPTV Player
-Exec=env PYTHONPATH=${ROOT} python3 -m tvwhere
+Exec=env PYTHONPATH=${ROOT} python3 -m tvwhere --desktop
 Icon=${ICON}
 Terminal=false
 Categories=AudioVideo;Video;Player;

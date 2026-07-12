@@ -332,7 +332,7 @@ class TVwhereApp:
         def run():
             from tvwhere.api import run_server
 
-            run_server(host="127.0.0.1", port=self._web_port)
+            run_server(host="127.0.0.1", port=self._web_port, quiet=True)
 
         self._web_server = threading.Thread(target=run, daemon=True)
         self._web_server.start()

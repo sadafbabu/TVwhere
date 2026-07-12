@@ -1,10 +1,10 @@
 [Desktop Entry]
-Version=2.0
+Version=2.2
 Type=Application
 Name=TVwhere
 GenericName=IPTV Player
-Comment=Minimalist IPTV Player
-Exec=env PYTHONPATH=/home/sadaf/TVwhere python3 -m tvwhere
+Comment=Cross-platform IPTV Player
+Exec=env PYTHONPATH=/home/sadaf/TVwhere python3 -m tvwhere --desktop
 Icon=/home/sadaf/TVwhere/assets/icon.png
 Terminal=false
 Categories=AudioVideo;Video;Player;
