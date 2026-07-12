@@ -73,7 +73,10 @@ EOF
 
 cp "${APP_DIR}/tvwhere.desktop" "${ROOT}/tvwhere.desktop"
 
-# Fix ownership if files were created as root
+# Fix ownership — config/cache often end up root:root after IDE agent runs
+if [ -d "$CONFIG_DIR" ] || [ -d "$CACHE_DIR" ]; then
+  chown -R "${REAL_USER}:${REAL_USER}" "$CONFIG_DIR" "$CACHE_DIR" 2>/dev/null || true
+fi
 if [ "$(id -u)" -eq 0 ] || [ "$REAL_USER" != "$USER" ]; then
   chown -R "${REAL_USER}:${REAL_USER}" \
     "$ROOT" "$BIN_DIR/tvwhere" "$BIN_DIR/tvwhere-web" \

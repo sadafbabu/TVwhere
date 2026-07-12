@@ -182,7 +182,7 @@ class TVwhereApp:
         self.main_content = tk.Frame(self.root, bg=THEME["bg"])
         self.main_content.pack(side="right", fill="both", expand=True)
 
-        country_row = tk.Frame(self.main_content, bg=THEME["bg"], padx=14, pady=(10, 4))
+        country_row = tk.Frame(self.main_content, bg=THEME["bg"], padx=14, pady=10)
         country_row.pack(fill="x")
         tk.Label(
             country_row,
@@ -229,7 +229,7 @@ class TVwhereApp:
         )
         self.search_entry.pack(fill="x")
 
-        group_row = tk.Frame(self.main_content, bg=THEME["bg"], padx=14, pady=(0, 6))
+        group_row = tk.Frame(self.main_content, bg=THEME["bg"], padx=14, pady=6)
         group_row.pack(fill="x")
         tk.Label(
             group_row,
