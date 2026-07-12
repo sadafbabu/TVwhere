@@ -1,0 +1,2 @@
+# No external python packages required. 
+# Runs on pure standard library (tkinter, urllib, json, subprocess, threading).

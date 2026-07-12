@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=TVwhere
+Comment=Minimalist IPTV Player
+Exec=/home/sadaf/.local/bin/tvwhere
+Icon=multimedia-video-player
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;Player;
+Keywords=tv;iptv;live;stream;
+StartupWMClass=tvwhere
