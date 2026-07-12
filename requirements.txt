@@ -1,2 +1,2 @@
-# No external python packages required. 
-# Runs on pure standard library (tkinter, urllib, json, subprocess, threading).
+# No external Python packages required.
+# Standard library only: tkinter, urllib, json, subprocess, threading.

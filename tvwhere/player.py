@@ -1,97 +1,120 @@
-import subprocess
-import shutil
 import os
 import platform
+import shutil
+import subprocess
+
 
 class PlayerManager:
-    """Manages spawning and killing media player processes (mpv / vlc)."""
+    """Spawn mpv or VLC for stream playback (Windows / Linux / macOS)."""
+
     def __init__(self):
         self._process = None
-        self._detected_player = self._detect_player()
+        self._player = self._detect_player()
+        self._player_cmd = self._resolve_command(self._player) if self._player else None
 
-    def _detect_player(self) -> str:
-        """Detect if mpv or vlc is installed."""
+    def _detect_player(self):
         if shutil.which("mpv"):
             return "mpv"
         if shutil.which("vlc"):
             return "vlc"
-        
-        # macOS specific fallback for VLC
-        if platform.system() == "Darwin":
-            if os.path.exists("/Applications/VLC.app/Contents/MacOS/VLC"):
+
+        system = platform.system()
+
+        if system == "Darwin":
+            vlc_app = "/Applications/VLC.app/Contents/MacOS/VLC"
+            if os.path.isfile(vlc_app):
                 return "vlc"
-                
+            if os.path.isfile("/opt/homebrew/bin/mpv"):
+                return "mpv"
+
+        if os.name == "nt":
+            local = os.environ.get("LOCALAPPDATA", "")
+            candidates = [
+                os.path.join(local, "Programs", "mpv", "mpv.exe"),
+                os.path.join(local, "Programs", "MPV", "mpv.exe"),
+                r"C:\Program Files\mpv\mpv.exe",
+                r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+                r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
+            ]
+            for path in candidates:
+                if os.path.isfile(path):
+                    return "mpv" if path.lower().endswith("mpv.exe") else "vlc"
+
+        return None
+
+    def _resolve_command(self, player: str):
+        if player == "mpv":
+            if shutil.which("mpv"):
+                return ["mpv"]
+            if platform.system() == "Darwin" and os.path.isfile("/opt/homebrew/bin/mpv"):
+                return ["/opt/homebrew/bin/mpv"]
+            if os.name == "nt":
+                local = os.environ.get("LOCALAPPDATA", "")
+                for path in (
+                    os.path.join(local, "Programs", "mpv", "mpv.exe"),
+                    os.path.join(local, "Programs", "MPV", "mpv.exe"),
+                    r"C:\Program Files\mpv\mpv.exe",
+                ):
+                    if os.path.isfile(path):
+                        return [path]
+        elif player == "vlc":
+            if shutil.which("vlc"):
+                return ["vlc"]
+            if platform.system() == "Darwin":
+                app = "/Applications/VLC.app/Contents/MacOS/VLC"
+                if os.path.isfile(app):
+                    return [app]
+            if os.name == "nt":
+                for path in (
+                    r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+                    r"C:\Program Files (x86)\VideoLAN\VLC\vlc.exe",
+                ):
+                    if os.path.isfile(path):
+                        return [path]
         return None
 
     @property
     def player_name(self) -> str:
-        """Return the name of the detected player, or None."""
-        return self._detected_player if self._detected_player else "None"
-
-    def is_playing(self) -> bool:
-        """Check if a stream is currently active."""
-        if self._process:
-            return self._process.poll() is None
-        return False
+        return self._player if self._player else "None"
 
     def play(self, url: str, title: str = "") -> bool:
-        """Launch the media player with the stream URL. Non-blocking."""
-        self.stop()  # Stop any existing stream first
-
-        if not self._detected_player:
+        self.stop()
+        if not self._player_cmd:
             return False
 
-        args = []
-        if self._detected_player == "mpv":
-            args = [
-                "mpv",
+        label = title or "TVwhere"
+        if self._player == "mpv":
+            args = self._player_cmd + [
                 "--force-window=immediate",
                 "--cache=yes",
-                f"--title={title if title else 'TVwhere'}",
-                url
+                f"--title={label}",
+                url,
             ]
-        elif self._detected_player == "vlc":
-            if platform.system() == "Darwin" and not shutil.which("vlc"):
-                # macOS direct app bundle execution
-                args = [
-                    "/Applications/VLC.app/Contents/MacOS/VLC",
-                    "--meta-title", title if title else "TVwhere",
-                    url
-                ]
-            else:
-                args = [
-                    "vlc",
-                    "--meta-title", title if title else "TVwhere",
-                    url
-                ]
+        else:
+            args = self._player_cmd + ["--meta-title", label, url]
 
         try:
-            # Set creationflags on Windows to avoid opening a command prompt window
-            creationflags = 0
-            if os.name == 'nt':
-                # CREATE_NO_WINDOW
-                creationflags = 0x08000000
-
-            self._process = subprocess.Popen(
-                args,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                creationflags=creationflags
-            )
+            kwargs = {
+                "stdout": subprocess.DEVNULL,
+                "stderr": subprocess.DEVNULL,
+            }
+            if os.name == "nt":
+                kwargs["creationflags"] = 0x08000000
+            self._process = subprocess.Popen(args, **kwargs)
             return True
-        except Exception as e:
-            print(f"Error launching player: {e}")
+        except Exception as exc:
+            print(f"Player launch failed: {exc}")
             return False
 
     def stop(self):
-        """Terminate the running stream process."""
-        if self._process:
+        if not self._process:
+            return
+        try:
+            self._process.terminate()
+            self._process.wait(timeout=2)
+        except Exception:
             try:
-                self._process.terminate()
-                self._process.wait(timeout=2)
+                self._process.kill()
             except Exception:
-                try:
-                    self._process.kill()
-                except Exception:
-                    pass
-            self._process = None
+                pass
+        self._process = None

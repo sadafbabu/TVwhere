@@ -1,105 +1,164 @@
-import os
 import json
+import os
+import sys
+import tkinter.font as tkfont
 from pathlib import Path
+from typing import Optional
 
-# Base Directories
+# ---------------------------------------------------------------------------
+# Paths (Windows / Linux / macOS)
+# ---------------------------------------------------------------------------
 HOME = Path.home()
-if os.name == 'nt':  # Windows
-    CONFIG_DIR = Path(os.environ.get('APPDATA', HOME)) / 'tvwhere'
-    CACHE_DIR = Path(os.environ.get('LOCALAPPDATA', HOME)) / 'tvwhere' / 'Cache'
-else:  # Linux / macOS
-    CONFIG_DIR = HOME / '.config' / 'tvwhere'
-    CACHE_DIR = HOME / '.cache' / 'tvwhere'
 
-FAVORITES_FILE = CONFIG_DIR / 'favorites.json'
-SETTINGS_FILE = CONFIG_DIR / 'settings.json'
+if os.name == "nt":
+    CONFIG_DIR = Path(os.environ.get("APPDATA", HOME)) / "tvwhere"
+    CACHE_DIR = Path(os.environ.get("LOCALAPPDATA", HOME)) / "tvwhere" / "cache"
+else:
+    CONFIG_DIR = HOME / ".config" / "tvwhere"
+    CACHE_DIR = HOME / ".cache" / "tvwhere"
 
-# M3U Playlists from iptv-org
+FAVORITES_FILE = CONFIG_DIR / "favorites.json"
+SETTINGS_FILE = CONFIG_DIR / "settings.json"
+
+_PKG_DIR = Path(__file__).resolve().parent
+_PROJECT_ROOT = _PKG_DIR.parent
+
+ICON_CANDIDATES = [
+    _PROJECT_ROOT / "assets" / "icon.png",
+    _PKG_DIR / "assets" / "icon.png",
+]
+
+
+def resolve_icon_path() -> Optional[Path]:
+    for path in ICON_CANDIDATES:
+        if path.is_file():
+            return path
+    return None
+
+
+ICON_PATH = resolve_icon_path()
+
+# ---------------------------------------------------------------------------
+# Playlists
+# ---------------------------------------------------------------------------
 PLAYLISTS = {
-    'Bangladesh': 'https://iptv-org.github.io/iptv/countries/bd.m3u',
-    'Bengali': 'https://iptv-org.github.io/iptv/languages/ben.m3u',
-    'Global': 'https://iptv-org.github.io/iptv/index.m3u'
+    "Bangladesh": "https://iptv-org.github.io/iptv/countries/bd.m3u",
+    "Bengali": "https://iptv-org.github.io/iptv/languages/ben.m3u",
+    "Global": "https://iptv-org.github.io/iptv/index.m3u",
 }
 
-# Minimalist Dark Grey/Black Theme
+SIDEBAR_TABS = [
+    "Bangladesh",
+    "Bengali",
+    "Global",
+    "Favorites",
+    "Custom URL",
+]
+
+# ---------------------------------------------------------------------------
+# Minimal black & gray theme
+# ---------------------------------------------------------------------------
 THEME = {
-    'bg': '#121212',            # Deep black
-    'bg_secondary': '#1a1a1a',  # Dark grey sidebar/titlebar
-    'bg_card': '#222222',       # Channel list items
-    'bg_hover': '#2d2d2d',      # Hover state
-    'bg_active': '#333333',     # Selected state
-    'fg': '#e5e5e5',            # High contrast text
-    'fg_dim': '#9e9e9e',        # Low contrast text
-    'fg_accent': '#906cf2',     # Premium purple accent
-    'border': '#2d2d2d',        # Borders
-    'search_bg': '#1e1e1e',     # Search bar bg
-    'scrollbar': '#2d2d2d',     # Scrollbar trough
-    'scrollbar_active': '#444444', # Scrollbar handle
-    'badge_bg': '#333333',      # Group badges
+    "bg": "#0a0a0a",
+    "bg_secondary": "#141414",
+    "bg_card": "#1a1a1a",
+    "bg_hover": "#262626",
+    "bg_active": "#303030",
+    "fg": "#e8e8e8",
+    "fg_dim": "#7a7a7a",
+    "fg_accent": "#c8c8c8",
+    "border": "#2a2a2a",
+    "search_bg": "#121212",
+    "scrollbar": "#1e1e1e",
+    "scrollbar_active": "#3a3a3a",
+    "badge_bg": "#2a2a2a",
+    "badge_fg": "#9a9a9a",
+    "empty_fg": "#5a5a5a",
 }
 
-# Typography
+CACHE_TTL = 3600
+PAGE_SIZE = 80
+SEARCH_DEBOUNCE_MS = 180
+
+
+def _font_family() -> str:
+    if sys.platform == "win32":
+        return "Segoe UI"
+    if sys.platform == "darwin":
+        return "Helvetica Neue"
+    try:
+        return tkfont.nametofont("TkDefaultFont").actual()["family"]
+    except Exception:
+        return "TkDefaultFont"
+
+
+_FONT = _font_family()
+
 FONTS = {
-    'title': ('Noto Sans', 14, 'bold'),
-    'heading': ('Noto Sans', 11, 'bold'),
-    'body': ('Noto Sans', 10),
-    'small': ('Noto Sans', 8),
-    'search': ('Noto Sans', 11)
+    "title": (_FONT, 16, "bold"),
+    "heading": (_FONT, 11),
+    "body": (_FONT, 10),
+    "small": (_FONT, 9),
+    "search": (_FONT, 11),
 }
 
-CACHE_TTL = 3600  # 1 hour cache validity
 
 def ensure_dirs():
-    """Ensure that config and cache directories exist."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+
 class FavoritesManager:
-    """Manages favorited channels saved to local JSON."""
-    @staticmethod
-    def load() -> dict:
+    """Persist favorites to JSON with a small in-memory cache."""
+
+    _cache = None
+
+    @classmethod
+    def invalidate(cls):
+        cls._cache = None
+
+    @classmethod
+    def load(cls) -> dict:
+        if cls._cache is not None:
+            return cls._cache
         ensure_dirs()
         if FAVORITES_FILE.exists():
             try:
-                with open(FAVORITES_FILE, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                with open(FAVORITES_FILE, encoding="utf-8") as f:
+                    cls._cache = json.load(f)
+                    return cls._cache
             except Exception:
-                return {}
-        return {}
+                pass
+        cls._cache = {}
+        return cls._cache
 
-    @staticmethod
-    def save(favorites: dict):
+    @classmethod
+    def save(cls, favorites: dict):
         ensure_dirs()
+        cls._cache = favorites
         try:
-            with open(FAVORITES_FILE, 'w', encoding='utf-8') as f:
-                json.dump(favorites, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            print(f"Error saving favorites: {e}")
+            with open(FAVORITES_FILE, "w", encoding="utf-8") as f:
+                json.dump(favorites, f, indent=2, ensure_ascii=False)
+        except Exception as exc:
+            print(f"Failed to save favorites: {exc}")
 
     @classmethod
     def add(cls, name: str, url: str, group: str = "General", logo: str = ""):
-        favs = cls.load()
-        favs[name] = {
-            'name': name,
-            'url': url,
-            'group': group,
-            'logo': logo
-        }
+        favs = dict(cls.load())
+        favs[name] = {"name": name, "url": url, "group": group, "logo": logo}
         cls.save(favs)
 
     @classmethod
     def remove(cls, name: str):
-        favs = cls.load()
+        favs = dict(cls.load())
         if name in favs:
             del favs[name]
             cls.save(favs)
 
     @classmethod
     def is_favorite(cls, name: str) -> bool:
-        favs = cls.load()
-        return name in favs
+        return name in cls.load()
 
     @classmethod
     def get_all(cls) -> list:
-        favs = cls.load()
-        return list(favs.values())
+        return list(cls.load().values())

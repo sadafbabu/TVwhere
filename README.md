@@ -1,37 +1,110 @@
 # TVwhere
 
-A highly polished, minimalist, dark-themed IPTV Player written in pure Python + Tkinter. No external Python packages are required (runs entirely on standard libraries).
+Minimalist IPTV player for **Windows, Linux, and macOS**.
+
+Pure Python + Tkinter. No pip dependencies. Streams open in **mpv** (recommended) or **VLC**.
 
 ## Features
-- **Minimalist Dark Theme** using custom tkinter components.
-- **Auto-Fetching Playlists:** Loads curated live TV lists (Bangladesh, Bengali, Global 13k+ channels) from `iptv-org`.
-- **Fast Search:** Filter channels in real-time.
-- **Favorites:** Toggle favorite state (`★`) and browse in the dedicated Favorites tab.
-- **Auto-Player Detection:** Spawns stream instantly in `mpv` (recommended for zero-latency buffering and full player control) or falls back to `vlc`.
-- **Custom Playlists:** Input any custom M3U playlist URL.
-- **Offline Caching:** Playlists are parsed and cached locally under `~/.cache/tvwhere/` (1 hour TTL) to load instantly.
+
+- Black & gray UI — clean, readable, nothing flashy
+- Bangladesh / Bengali / Global playlists from [iptv-org](https://github.com/iptv-org/iptv)
+- Fast search — multi-word, accent-insensitive, debounced
+- Favorites saved locally
+- Lazy channel list (smooth with 10,000+ channels)
+- Custom M3U URL support
+- Playlist cache (1 hour) under your OS app-data folder
 
 ## Requirements
-- Python 3.8+ (with `tkinter`)
-- `mpv` (recommended) or `vlc` player
 
-On Arch Linux:
-```bash
-sudo pacman -S python mpv
+| Platform | Python | Player |
+|----------|--------|--------|
+| Windows  | 3.8+ with tkinter | mpv or VLC |
+| Linux    | 3.8+ with tkinter | mpv or VLC |
+| macOS    | 3.8+ with tkinter | mpv or VLC |
+
+### Install player
+
+**Windows**
+```powershell
+winget install mpv
+# or download VLC from https://www.videolan.org/
 ```
 
-## Running the App
-From the project root directory, run:
+**Linux (Arch)**
 ```bash
-python3 -m tvwhere
+sudo pacman -S python tk mpv
 ```
 
-## Desktop Integration (Linux)
-A desktop launcher file is included. To make TVwhere available in your application menus (like `rofi`, `wofi`, `dmenu`):
+**macOS**
 ```bash
-# 1. Install pip package in editable mode
-pip install -e .
-
-# 2. Copy the desktop entry to your user applications
-cp tvwhere.desktop ~/.local/share/applications/
+brew install python-tk mpv
 ```
+
+## Run
+
+### Quick start (any OS)
+
+```bash
+git clone https://github.com/SadafTiger/TVwhere.git
+cd TVwhere
+python -m tvwhere
+```
+
+On Windows use `py -m tvwhere` if `python` is not on PATH.
+
+### Linux / macOS — app menu shortcut
+
+```bash
+./scripts/install.sh
+tvwhere
+```
+
+### Windows — desktop shortcut
+
+```powershell
+.\scripts\install.ps1
+tvwhere
+```
+
+## Data locations
+
+| Data | Windows | Linux / macOS |
+|------|---------|---------------|
+| Favorites | `%APPDATA%\tvwhere\` | `~/.config/tvwhere/` |
+| Cache | `%LOCALAPPDATA%\tvwhere\cache\` | `~/.cache/tvwhere/` |
+
+## Project layout
+
+```
+TVwhere/
+├── assets/icon.png      App icon
+├── scripts/
+│   ├── install.sh       Linux / macOS launcher
+│   ├── install.ps1      Windows launcher
+│   └── uninstall.sh
+├── tvwhere/             Python package
+│   ├── app.py           Main window
+│   ├── config.py        Theme, paths, playlists
+│   ├── search.py        Search engine
+│   ├── iptv.py          M3U fetch + cache
+│   ├── player.py        mpv / VLC launcher
+│   └── widgets.py       UI components
+├── setup.py
+└── README.md
+```
+
+## Uninstall launcher
+
+**Linux / macOS**
+```bash
+./scripts/uninstall.sh
+```
+
+**Windows**
+```powershell
+.\scripts\uninstall.ps1
+```
+
+## License
+
+MIT — see [LICENSE](LICENSE).

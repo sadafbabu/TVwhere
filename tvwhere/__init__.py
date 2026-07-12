@@ -1,2 +1,1 @@
-# TVwhere package init
-__version__ = "1.0.0"
+# TVwhere — version 1.1.0
