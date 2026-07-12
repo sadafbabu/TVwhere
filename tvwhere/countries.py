@@ -7,6 +7,7 @@ DEFAULT_COUNTRY = "global"
 # Countries — alphabetical by name after "All"
 COUNTRIES = [
     {"code": "global", "name": "All Countries", "url": f"{IPTV_ORG_BASE}/index.m3u", "kind": "all"},
+    {"code": "4k", "name": "4K / UHD", "url": f"{IPTV_ORG_BASE}/categories/4k.m3u", "kind": "category"},
     {"code": "af", "name": "Afghanistan", "url": f"{IPTV_ORG_BASE}/countries/af.m3u", "kind": "country"},
     {"code": "ar", "name": "Argentina", "url": f"{IPTV_ORG_BASE}/countries/ar.m3u", "kind": "country"},
     {"code": "au", "name": "Australia", "url": f"{IPTV_ORG_BASE}/countries/au.m3u", "kind": "country"},

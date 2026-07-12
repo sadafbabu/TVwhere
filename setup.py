@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="tvwhere",
-    version="2.1.0",
+    version="2.2.0",
     description="Minimalist cross-platform IPTV player",
     author="Sadaf",
     license="MIT",
@@ -11,6 +11,7 @@ setup(
     entry_points={
         "console_scripts": [
             "tvwhere=tvwhere.__main__:main",
+            "tvwhere-web=tvwhere.__main__:main",
         ],
     },
     python_requires=">=3.8",

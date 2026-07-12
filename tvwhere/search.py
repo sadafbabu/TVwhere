@@ -14,11 +14,14 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+from tvwhere.resolution import channel_resolution
+
+
 def _channel_blob(channel: dict) -> str:
     parts = [
         channel.get("name", ""),
         channel.get("group", ""),
-        channel.get("resolution", ""),
+        channel_resolution(channel),
     ]
     return normalize(" ".join(parts))
 

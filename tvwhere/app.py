@@ -1,5 +1,6 @@
 import threading
 import tkinter as tk
+import urllib.parse
 import webbrowser
 from tkinter import messagebox
 
@@ -20,7 +21,8 @@ from tvwhere.countries import COUNTRIES, LANGUAGES, get_name
 from tvwhere.history import HistoryManager
 from tvwhere.icons import apply_window_icon, load_logo
 from tvwhere.iptv import clear_playlist_cache, load_m3u_from_path
-from tvwhere.player import PlayerManager
+from tvwhere.player_embed import EmbeddedPlayer
+from tvwhere.resolution import FILTER_OPTIONS
 from tvwhere.search import sort_channels
 from tvwhere.service import PlaylistService
 from tvwhere.widgets import (
@@ -45,13 +47,16 @@ class TVwhereApp:
         self._set_window_icon()
 
         ensure_dirs()
-        self.player = PlayerManager()
+        self._web_port = 8765
+        self._web_server = None
+        self._ensure_web_server()
 
         self.channels = []
         self.displayed = []
         self.active_tab = None
         self.country_code = SettingsManager.get_country()
         self.active_group = "All"
+        self.active_resolution = SettingsManager.get_resolution() or ""
         self._group_names = ["All"]
         self._render_offset = 0
         self._fav_names = set()
@@ -60,7 +65,6 @@ class TVwhereApp:
         self._load_generation = 0
         self._custom_loaded = False
         self._custom_url = ""
-        self._web_server = None
         self._channel_fp = ""
         self._silent_refresh_job = None
         self._status_flash_job = None
@@ -170,7 +174,7 @@ class TVwhereApp:
 
         tk.Label(
             self.sidebar,
-            text=f"Player: {self.player.player_name}",
+            text="Built-in player",
             bg=THEME["bg_secondary"],
             fg=THEME["fg_dim"],
             font=FONTS["small"],
@@ -250,9 +254,53 @@ class TVwhereApp:
             font=FONTS["small"],
         )
         self.group_menu["menu"].configure(bg=THEME["bg_card"], fg=THEME["fg"])
-        self.group_menu.pack(side="left")
+        self.group_menu.pack(side="left", padx=(0, 12))
+
+        tk.Label(
+            group_row,
+            text="Quality",
+            bg=THEME["bg"],
+            fg=THEME["fg_dim"],
+            font=FONTS["small"],
+        ).pack(side="left", padx=(0, 8))
+        self.resolution_var = tk.StringVar(value=self._resolution_label(self.active_resolution))
+        res_labels = [label for _, label in FILTER_OPTIONS]
+        self._resolution_by_label = {label: code for code, label in FILTER_OPTIONS}
+        self.resolution_menu = tk.OptionMenu(
+            group_row,
+            self.resolution_var,
+            *res_labels,
+            command=self._on_resolution_change,
+        )
+        self.resolution_menu.configure(
+            bg=THEME["bg_card"],
+            fg=THEME["fg"],
+            activebackground=THEME["bg_hover"],
+            activeforeground=THEME["fg"],
+            highlightthickness=0,
+            borderwidth=0,
+            font=FONTS["small"],
+        )
+        self.resolution_menu["menu"].configure(bg=THEME["bg_card"], fg=THEME["fg"])
+        self.resolution_menu.pack(side="left")
 
         self.list_container = tk.Frame(self.main_content, bg=THEME["bg"])
+
+        self.player_container = tk.Frame(self.main_content, bg=THEME["bg"], padx=14, pady=6)
+        self.player_container.pack(fill="x")
+        self.player_frame = tk.Frame(self.player_container, bg="#000000", height=200)
+        self.player_frame.pack(fill="x")
+        self.player_frame.pack_propagate(False)
+        self.player_label = tk.Label(
+            self.player_frame,
+            text="Select a channel to play",
+            bg="#000000",
+            fg=THEME["fg_dim"],
+            font=FONTS["small"],
+        )
+        self.player_label.place(relx=0.5, rely=0.5, anchor="center")
+        self.embedded_player = EmbeddedPlayer(self.player_frame, web_port=self._web_port)
+
         self.list_container.pack(fill="both", expand=True, padx=14, pady=(0, 4))
 
         self.scroll_frame = ScrollableFrame(
@@ -270,6 +318,30 @@ class TVwhereApp:
             if lang["code"] == code:
                 return f"Language: {lang['name']}"
         return get_name(code)
+
+    def _resolution_label(self, code: str) -> str:
+        for c, label in FILTER_OPTIONS:
+            if c == code:
+                return label
+        return FILTER_OPTIONS[0][1]
+
+    def _ensure_web_server(self):
+        if self._web_server and self._web_server.is_alive():
+            return
+
+        def run():
+            from tvwhere.api import run_server
+
+            run_server(host="127.0.0.1", port=self._web_port)
+
+        self._web_server = threading.Thread(target=run, daemon=True)
+        self._web_server.start()
+
+    def _on_resolution_change(self, label):
+        code = self._resolution_by_label.get(label, "")
+        self.active_resolution = code
+        SettingsManager.set_resolution(code)
+        self._apply_filters()
 
     def _set_country_menu_enabled(self, enabled: bool):
         state = "normal" if enabled else "disabled"
@@ -605,6 +677,7 @@ class TVwhereApp:
             self.channels,
             query,
             None if self.active_group == "All" else self.active_group,
+            self.active_resolution or None,
         )
         if self.active_tab in ("channels", "Custom URL", "Favorites", "Recent"):
             filtered = PlaylistService.apply_health(filtered)
@@ -667,19 +740,47 @@ class TVwhereApp:
         if self._render_offset < len(self.displayed):
             self._append_channel_batch()
 
+    def _play_via_web(self, url: str, title: str):
+        import json
+        import urllib.request
+
+        payload = json.dumps({"channel": {"name": title, "url": url}}).encode("utf-8")
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self._web_port}/api/play",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req, timeout=3)
+        except Exception:
+            pass
+        play_url = f"http://127.0.0.1:{self._web_port}/?autoplay={urllib.parse.quote(url, safe='')}"
+        webbrowser.open(play_url)
+
     def _play_channel(self, channel):
         PlaylistService.record_play(channel)
-        self.status_bar.set_status(f"Opening: {channel['name']}")
-        success = self.player.play(channel["url"], title=channel["name"])
+        name = channel["name"]
+        url = channel["url"]
+        self.player_label.place_forget()
+        self.status_bar.set_status(f"Playing: {name}")
 
-        if success:
-            self.status_bar.set_status(f"Playing: {channel['name']}")
+        mode = self.embedded_player.play(
+            url,
+            title=name,
+            on_web=lambda u, t: self._play_via_web(u, t),
+        )
+        if mode == "embed":
+            self.status_bar.set_status(f"Playing: {name}")
+        elif mode == "web":
+            self.status_bar.set_status(f"Playing in browser: {name}")
         else:
-            self.status_bar.set_status("No player found")
+            self.status_bar.set_status("Could not start player")
             messagebox.showerror(
-                "Player Required",
-                "Install mpv (recommended) or VLC to play streams.\n\n"
-                "Or use Web UI: tvwhere --web --open",
+                "Playback Error",
+                "Could not play this stream.\n\n"
+                "Try: tvwhere --web --open\n"
+                "Or install mpv for embedded playback.",
             )
 
     def _toggle_favorite(self, channel, is_fav):
@@ -712,5 +813,5 @@ class TVwhereApp:
             self.root.after_cancel(self._search_job)
         if self._silent_refresh_job:
             self.root.after_cancel(self._silent_refresh_job)
-        self.player.stop()
+        self.embedded_player.stop()
         self.root.destroy()

@@ -43,6 +43,13 @@
         <div class="toolbar">
           <input id="searchInput" type="search" placeholder="Search channels..." autocomplete="off" />
           <select id="groupSelect"><option value="">All groups</option></select>
+          <select id="resolutionSelect">
+            <option value="">All qualities</option>
+            <option value="4K">4K / UHD</option>
+            <option value="1080p">1080p</option>
+            <option value="720p">720p</option>
+            <option value="SD">SD</option>
+          </select>
           <button id="refreshBtn" class="text-btn">Refresh</button>
         </div>
 
@@ -50,7 +57,7 @@
           <video id="video" controls playsinline></video>
           <div class="player-meta">
             <span id="nowPlaying"></span>
-            <button id="extPlayBtn" class="text-btn">Open in player</button>
+            <button id="stopBtn" class="text-btn">Stop</button>
           </div>
         </div>
 

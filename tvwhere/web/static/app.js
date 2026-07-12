@@ -22,6 +22,7 @@ const channelList = $("#channelList");
 const searchInput = $("#searchInput");
 const groupSelect = $("#groupSelect");
 const countrySelect = $("#countrySelect");
+const resolutionSelect = $("#resolutionSelect");
 const playerPanel = $("#playerPanel");
 const video = $("#video");
 const nowPlaying = $("#nowPlaying");
@@ -57,6 +58,7 @@ function setToolbarForView() {
   const isLive = state.view === "live";
   countrySelect.disabled = !isLive;
   groupSelect.disabled = state.view === "favorites" || state.view === "recent";
+  resolutionSelect.disabled = state.view === "favorites" || state.view === "recent";
 }
 
 function populateCountrySelect(regions, selected) {
@@ -105,9 +107,11 @@ function buildQuery(refresh) {
   const qs = new URLSearchParams();
   const group = groupSelect.value;
   const q = searchInput.value.trim();
+  const res = resolutionSelect.value;
   if (state.view === "live") qs.set("country", state.country);
   if (group) qs.set("group", group);
   if (q) qs.set("q", q);
+  if (res) qs.set("resolution", res);
   if (refresh) qs.set("refresh", "1");
   return qs;
 }
@@ -214,6 +218,9 @@ function renderChannels(channels) {
     meta.textContent = [ch.radio ? "Radio" : null, ch.group, ch.resolution]
       .filter(Boolean)
       .join(" · ");
+    if (ch.resolution && ch.resolution.toUpperCase() === "4K") {
+      name.style.color = "#e8e8e8";
+    }
     info.appendChild(name);
     info.appendChild(meta);
     row.appendChild(info);
@@ -257,6 +264,19 @@ async function loadEpg(ch) {
     }
     nowPlaying.textContent = text;
   } catch (_) {}
+}
+
+function stopPlayback() {
+  if (state.hls) {
+    state.hls.destroy();
+    state.hls = null;
+  }
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+  state.playingUrl = null;
+  playerPanel.classList.add("hidden");
+  renderChannels(state.channels);
 }
 
 function playChannel(ch) {
@@ -342,7 +362,7 @@ function scheduleTimers() {
 
   if (state.healthTimer) clearInterval(state.healthTimer);
   state.healthTimer = setInterval(() => {
-    if (["live", "playlist", "favorites", "recent"].includes(state.view)) {
+    if (state.view === "live" && !state.busy && !state.playingUrl) {
       loadChannels(false, true);
     }
   }, HEALTH_POLL_MS);
@@ -376,9 +396,7 @@ $("#addBtn").onclick = openModal;
 $("#homeBtn").onclick = () => selectLive();
 $("#modalCancel").onclick = closeModal;
 $("#refreshBtn").onclick = () => loadChannels(true);
-$("#extPlayBtn").onclick = () => {
-  if (state.playingUrl) window.open(state.playingUrl, "_blank");
-};
+$("#stopBtn").onclick = () => stopPlayback();
 
 countrySelect.onchange = async () => {
   state.country = countrySelect.value;
@@ -395,6 +413,13 @@ searchInput.oninput = () => {
   state.debounce = setTimeout(() => loadChannels(), 180);
 };
 groupSelect.onchange = () => loadChannels();
+resolutionSelect.onchange = async () => {
+  await api("/api/settings", {
+    method: "POST",
+    body: JSON.stringify({ resolution: resolutionSelect.value }),
+  });
+  loadChannels();
+};
 
 $("#modalSave").onclick = async () => {
   const activeTab = document.querySelector(".tab.active").dataset.tab;
@@ -444,11 +469,19 @@ async function init() {
     api("/api/countries"),
   ]);
   state.country = settings.country || "global";
+  if (settings.resolution) resolutionSelect.value = settings.resolution;
   populateCountrySelect(regions, state.country);
   await loadFavorites();
   await loadPlaylists();
   selectLive();
   scheduleTimers();
+
+  const params = new URLSearchParams(location.search);
+  const autoplay = params.get("autoplay");
+  if (autoplay) {
+    const ch = { name: "Stream", url: decodeURIComponent(autoplay), group: "", resolution: "" };
+    setTimeout(() => playChannel(ch), 500);
+  }
 }
 
 init();

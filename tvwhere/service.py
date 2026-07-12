@@ -18,6 +18,7 @@ from tvwhere.iptv import (
 )
 from tvwhere.models import channel_id
 from tvwhere.playlists import PlaylistManager
+from tvwhere.resolution import filter_by_resolution
 from tvwhere.search import filter_channels, sort_channels
 from tvwhere.xtream import get_live_streams, validate_login, xtream_error_message
 
@@ -144,10 +145,18 @@ class PlaylistService:
         threading.Thread(target=worker, daemon=True).start()
 
     @classmethod
-    def search(cls, channels: list, query: str, group: Optional[str] = None) -> list:
+    def search(
+        cls,
+        channels: list,
+        query: str,
+        group: Optional[str] = None,
+        resolution: Optional[str] = None,
+    ) -> list:
         result = channels
         if group and group not in ("", "All"):
             result = [c for c in result if (c.get("group") or "General") == group]
+        if resolution and resolution not in ("", "All"):
+            result = filter_by_resolution(result, resolution)
         if query and query.strip():
             result = filter_channels(result, query.strip())
         return result

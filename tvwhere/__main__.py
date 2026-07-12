@@ -3,11 +3,12 @@ import sys
 import tkinter as tk
 import webbrowser
 
+from tvwhere import __version__
 from tvwhere.app import TVwhereApp
 from tvwhere.icons import apply_window_icon
 
 
-def _center_window(root: tk.Tk, width: int = 960, height: int = 640):
+def _center_window(root: tk.Tk, width: int = 980, height: int = 700):
     root.update_idletasks()
     screen_w = root.winfo_screenwidth()
     screen_h = root.winfo_screenheight()
@@ -30,7 +31,7 @@ def run_desktop():
     except Exception:
         pass
 
-    root.title("TVwhere")
+    root.title(f"TVwhere {__version__}")
     root._tvwhere_icon = apply_window_icon(root)
     _center_window(root)
 
@@ -40,7 +41,7 @@ def run_desktop():
 
 
 def run_web(host: str, port: int, open_browser: bool):
-    from tvwhere.api import get_local_ip, run_server
+    from tvwhere.api import run_server
 
     if open_browser:
         import threading
@@ -59,6 +60,11 @@ def run_web(host: str, port: int, open_browser: bool):
 def main():
     parser = argparse.ArgumentParser(description="TVwhere — cross-platform IPTV player")
     parser.add_argument(
+        "--desktop",
+        action="store_true",
+        help="Classic desktop UI with channel list (default is web player)",
+    )
+    parser.add_argument(
         "--web",
         action="store_true",
         help="Start web UI server (mobile, tablet, browser)",
@@ -72,10 +78,12 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.web:
+    if args.desktop:
+        run_desktop()
+    elif args.web:
         run_web(args.host, args.port, args.open)
     else:
-        run_desktop()
+        run_web(args.host, args.port, True)
 
 
 if __name__ == "__main__":

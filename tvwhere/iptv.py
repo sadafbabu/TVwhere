@@ -15,7 +15,7 @@ _LOGO_RE = re.compile(r'tvg-logo="([^"]*)"', re.I)
 _GROUP_RE = re.compile(r'group-title="([^"]*)"', re.I)
 _TVG_NAME_RE = re.compile(r'tvg-name="([^"]*)"', re.I)
 _TVG_ID_RE = re.compile(r'tvg-id="([^"]*)"', re.I)
-_RES_RE = re.compile(r"\b(4k|2160p|1080p|720p|480p|360p)\b", re.I)
+from tvwhere.resolution import detect_resolution
 _STREAM_PREFIXES = ("http://", "https://", "rtmp://", "rtsp://", "udp://")
 
 
@@ -76,16 +76,15 @@ def parse_m3u(content: str) -> list:
             comma_name = line[idx + 1 :].strip() if idx != -1 else "Unknown Channel"
             name = (tvg_name.group(1) if tvg_name else comma_name).strip() or comma_name
 
-            res_match = _RES_RE.search(name)
-            resolution = res_match.group(1).lower() if res_match else ""
             grp = group.group(1) if group else "General"
+            res_match = detect_resolution(name, grp)
             radio = grp.lower() in ("radio", "radios") or " radio" in name.lower()
 
             current_meta = {
                 "name": name,
                 "logo": logo.group(1) if logo else "",
                 "group": grp,
-                "resolution": resolution,
+                "resolution": res_match,
                 "tvg_id": tvg_id.group(1) if tvg_id else "",
                 "radio": radio,
             }

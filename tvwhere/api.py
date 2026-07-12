@@ -128,6 +128,7 @@ class TVwhereAPIHandler(BaseHTTPRequestHandler):
                     "country": SettingsManager.get_country(),
                     "hide_dead": SettingsManager.hide_dead_channels(),
                     "show_unavailable": SettingsManager.show_unavailable(),
+                    "resolution": SettingsManager.get_resolution(),
                 },
             )
 
@@ -144,10 +145,11 @@ class TVwhereAPIHandler(BaseHTTPRequestHandler):
             country = (query.get("country") or [SettingsManager.get_country()])[0]
             group = (query.get("group") or [""])[0]
             q = (query.get("q") or [""])[0]
+            res = (query.get("resolution") or [""])[0]
             force = (query.get("refresh") or ["0"])[0] == "1"
             try:
                 channels = _get_live_channels(country, force=force)
-                result = PlaylistService.search(channels, q, group or None)
+                result = PlaylistService.search(channels, q, group or None, res or None)
                 result = _filter_visible(result)
                 return _json_response(
                     self,
@@ -181,12 +183,13 @@ class TVwhereAPIHandler(BaseHTTPRequestHandler):
             pid = path.split("/")[3]
             group = (query.get("group") or [""])[0]
             q = (query.get("q") or [""])[0]
+            res = (query.get("resolution") or [""])[0]
             force = (query.get("refresh") or ["0"])[0] == "1"
             try:
                 if force or pid not in _CHANNEL_CACHE:
                     _CHANNEL_CACHE[pid] = PlaylistService.load_channels_sync(pid, force=force)
                 channels = _CHANNEL_CACHE[pid]
-                result = PlaylistService.search(channels, q, group or None)
+                result = PlaylistService.search(channels, q, group or None, res or None)
                 result = _filter_visible(result)
                 return _json_response(self, {"channels": result, "total": len(result)})
             except Exception as exc:
@@ -311,6 +314,8 @@ class TVwhereAPIHandler(BaseHTTPRequestHandler):
         if path == "/api/settings":
             if "country" in data:
                 SettingsManager.set_country(data["country"])
+            if "resolution" in data:
+                SettingsManager.set_resolution(data["resolution"])
             if "show_unavailable" in data:
                 SettingsManager.set_show_unavailable(bool(data["show_unavailable"]))
                 SettingsManager.set_hide_dead(not bool(data["show_unavailable"]))

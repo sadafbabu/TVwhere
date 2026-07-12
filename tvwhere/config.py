@@ -183,6 +183,16 @@ class SettingsManager:
         data["show_unavailable"] = value
         cls.save(data)
 
+    @classmethod
+    def get_resolution(cls) -> str:
+        return cls.load().get("resolution", "")
+
+    @classmethod
+    def set_resolution(cls, value: str):
+        data = dict(cls.load())
+        data["resolution"] = value
+        cls.save(data)
+
 
 class FavoritesManager:
     _cache = None

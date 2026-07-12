@@ -1,7 +1,6 @@
 """Xtream Codes API — inspired by open IPTV players (IPTVnator, Fred TV patterns)."""
 
 import json
-import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -11,7 +10,7 @@ from typing import Any
 from tvwhere.iptv import USER_AGENT
 from tvwhere.models import Channel
 
-_RES_RE = re.compile(r"\b(4k|2160p|1080p|720p|480p|360p)\b", re.I)
+from tvwhere.resolution import detect_resolution
 
 
 def _normalize_server(server: str) -> str:
@@ -73,14 +72,14 @@ def get_live_streams(server: str, username: str, password: str, playlist_id: str
         if stream_url in seen:
             continue
         seen.add(stream_url)
-        res_match = _RES_RE.search(name)
+        res_match = detect_resolution(name, group)
         channels.append(
             Channel(
                 name=name,
                 url=stream_url,
                 group=group,
                 logo=logo,
-                resolution=res_match.group(1).lower() if res_match else "",
+                resolution=res_match,
                 tvg_id=str(item.get("epg_channel_id") or ""),
                 playlist_id=playlist_id,
             ).to_dict()

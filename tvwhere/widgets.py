@@ -3,6 +3,7 @@ from pathlib import Path
 from tkinter import filedialog
 
 from tvwhere.config import THEME, FONTS
+from tvwhere.resolution import channel_resolution
 
 
 def set_bg_recursive(widget, color):
@@ -263,12 +264,15 @@ class ChannelCard(tk.Frame):
         badges = tk.Frame(content, bg=THEME["bg_card"])
         badges.pack(side="right")
 
-        if resolution:
+        res_label = channel_resolution({"name": name, "group": group, "resolution": resolution})
+        if res_label:
+            res_text = res_label.upper()
+            res_fg = THEME["fg_accent"] if res_label == "4K" else THEME["badge_fg"]
             res = tk.Label(
                 badges,
-                text=resolution.upper(),
+                text=res_text,
                 bg=THEME["badge_bg"],
-                fg=THEME["badge_fg"],
+                fg=res_fg,
                 font=FONTS["small"],
                 padx=5,
                 pady=1,
