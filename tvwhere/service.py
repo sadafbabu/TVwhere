@@ -4,7 +4,11 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
+from tvwhere.config import SettingsManager
+from tvwhere.countries import get_url as country_url
 from tvwhere.epg import fetch_epg_xml, match_channel_epg, parse_channel_names, parse_programs
+from tvwhere.fingerprint import channels_fingerprint
+from tvwhere.health import check_batch_async, filter_channels as health_filter
 from tvwhere.history import HistoryManager
 from tvwhere.iptv import (
     clear_playlist_cache,
@@ -12,7 +16,7 @@ from tvwhere.iptv import (
     parse_m3u,
     save_to_cache,
 )
-from tvwhere.models import Channel, channel_id
+from tvwhere.models import channel_id
 from tvwhere.playlists import PlaylistManager
 from tvwhere.search import filter_channels, sort_channels
 from tvwhere.xtream import get_live_streams, validate_login, xtream_error_message
@@ -20,8 +24,6 @@ from tvwhere.xtream import get_live_streams, validate_login, xtream_error_messag
 
 class PlaylistService:
     """Load and cache channels for any playlist type."""
-
-    _locks = {}
 
     @classmethod
     def list_playlists(cls) -> list:
@@ -36,14 +38,22 @@ class PlaylistService:
         return [{"name": k, "count": v} for k, v in sorted(groups.items(), key=lambda x: x[0].lower())]
 
     @classmethod
+    def load_country_channels(cls, country_code: str, force: bool = False) -> list:
+        url = country_url(country_code)
+        return cls._fetch_m3u_sync(url, f"country-{country_code}", force)
+
+    @classmethod
     def load_channels_sync(cls, playlist_id: str, force: bool = False) -> list:
+        if playlist_id.startswith("country-"):
+            code = playlist_id.replace("country-", "", 1)
+            return cls.load_country_channels(code, force)
+
         pl = PlaylistManager.get(playlist_id)
         if not pl:
             raise ValueError("Playlist not found.")
 
-        if pl["type"] in ("builtin", "m3u"):
-            url = pl["url"]
-            return cls._fetch_m3u_sync(url, playlist_id, force)
+        if pl["type"] == "m3u":
+            return cls._fetch_m3u_sync(pl["url"], playlist_id, force)
 
         if pl["type"] == "xtream":
             try:
@@ -104,16 +114,29 @@ class PlaylistService:
         return tagged
 
     @classmethod
+    def apply_health(cls, channels: list) -> list:
+        hide = SettingsManager.hide_dead_channels() and not SettingsManager.show_unavailable()
+        return health_filter(channels, hide_dead=hide)
+
+    @classmethod
+    def start_health_checks(cls, channels: list, on_dead=None, on_done: Optional[Callable] = None):
+        check_batch_async(channels, on_dead=on_dead, on_done=on_done)
+
+    @classmethod
     def load_channels_async(
         cls,
         playlist_id: str,
         on_ok: Callable,
         on_err: Callable,
         force: bool = False,
+        country_code: Optional[str] = None,
     ):
         def worker():
             try:
-                channels = cls.load_channels_sync(playlist_id, force=force)
+                if country_code:
+                    channels = cls.load_country_channels(country_code, force=force)
+                else:
+                    channels = cls.load_channels_sync(playlist_id, force=force)
                 on_ok(channels)
             except Exception as exc:
                 on_err(str(exc))
@@ -123,11 +146,15 @@ class PlaylistService:
     @classmethod
     def search(cls, channels: list, query: str, group: Optional[str] = None) -> list:
         result = channels
-        if group and group != "All":
+        if group and group not in ("", "All"):
             result = [c for c in result if (c.get("group") or "General") == group]
-        if query.strip():
-            result = filter_channels(result, query)
+        if query and query.strip():
+            result = filter_channels(result, query.strip())
         return result
+
+    @classmethod
+    def fingerprint(cls, channels: list) -> str:
+        return channels_fingerprint(channels)
 
     @classmethod
     def get_epg_for_channel(cls, channel: dict, playlist: dict) -> dict:

@@ -10,7 +10,9 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from tvwhere.config import FavoritesManager, ensure_dirs
+from tvwhere.config import FavoritesManager, SettingsManager, ensure_dirs
+from tvwhere.fingerprint import channels_fingerprint
+from tvwhere.countries import list_countries, DEFAULT_COUNTRY
 from tvwhere.history import HistoryManager
 from tvwhere.iptv import USER_AGENT
 from tvwhere.models import channel_id
@@ -19,7 +21,32 @@ from tvwhere.service import PlaylistService
 
 WEB_ROOT = Path(__file__).resolve().parent / "web" / "static"
 _CHANNEL_CACHE = {}
+_HEALTH_STARTED = set()
 _STREAM_PREFIXES = ("http://", "https://")
+
+
+def _cache_key_country(code: str) -> str:
+    return f"country-{code}"
+
+
+def _get_live_channels(country: str, force: bool = False) -> list:
+    key = _cache_key_country(country)
+    if force or key not in _CHANNEL_CACHE:
+        _CHANNEL_CACHE[key] = PlaylistService.load_country_channels(country, force=force)
+        _HEALTH_STARTED.discard(key)
+    channels = _CHANNEL_CACHE[key]
+    if key not in _HEALTH_STARTED:
+        _HEALTH_STARTED.add(key)
+
+        def on_dead():
+            pass
+
+        PlaylistService.start_health_checks(channels, on_dead=on_dead)
+    return channels
+
+
+def _filter_visible(channels: list) -> list:
+    return PlaylistService.apply_health(channels)
 
 
 def _json_response(handler, data, status=200):
@@ -72,7 +99,7 @@ def _rewrite_m3u8(content: str, base_url: str, proxy_base: str) -> str:
 
 
 class TVwhereAPIHandler(BaseHTTPRequestHandler):
-    server_version = "TVwhere/2.0"
+    server_version = "TVwhere/2.1"
 
     def log_message(self, fmt, *args):
         pass
@@ -89,6 +116,50 @@ class TVwhereAPIHandler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/") or "/"
         query = urllib.parse.parse_qs(parsed.query)
 
+        if path == "/api/countries":
+            from tvwhere.countries import list_all_regions
+
+            return _json_response(self, list_all_regions())
+
+        if path == "/api/settings":
+            return _json_response(
+                self,
+                {
+                    "country": SettingsManager.get_country(),
+                    "hide_dead": SettingsManager.hide_dead_channels(),
+                    "show_unavailable": SettingsManager.show_unavailable(),
+                },
+            )
+
+        if path == "/api/live/groups":
+            country = (query.get("country") or [SettingsManager.get_country()])[0]
+            try:
+                channels = _get_live_channels(country)
+                visible = _filter_visible(channels)
+                return _json_response(self, {"groups": PlaylistService.get_groups(visible)})
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+
+        if path == "/api/live/channels":
+            country = (query.get("country") or [SettingsManager.get_country()])[0]
+            group = (query.get("group") or [""])[0]
+            q = (query.get("q") or [""])[0]
+            force = (query.get("refresh") or ["0"])[0] == "1"
+            try:
+                channels = _get_live_channels(country, force=force)
+                result = PlaylistService.search(channels, q, group or None)
+                result = _filter_visible(result)
+                return _json_response(
+                    self,
+                    {
+                        "channels": result,
+                        "total": len(result),
+                        "fingerprint": channels_fingerprint(channels),
+                    },
+                )
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+
         if path == "/api/playlists":
             items = PlaylistService.list_playlists()
             safe = []
@@ -103,7 +174,8 @@ class TVwhereAPIHandler(BaseHTTPRequestHandler):
             pid = path.split("/")[3]
             channels = _CHANNEL_CACHE.get(pid) or PlaylistService.load_channels_sync(pid)
             _CHANNEL_CACHE[pid] = channels
-            return _json_response(self, {"groups": PlaylistService.get_groups(channels)})
+            visible = _filter_visible(channels)
+            return _json_response(self, {"groups": PlaylistService.get_groups(visible)})
 
         if path.startswith("/api/playlists/") and "/channels" in path:
             pid = path.split("/")[3]
@@ -115,6 +187,7 @@ class TVwhereAPIHandler(BaseHTTPRequestHandler):
                     _CHANNEL_CACHE[pid] = PlaylistService.load_channels_sync(pid, force=force)
                 channels = _CHANNEL_CACHE[pid]
                 result = PlaylistService.search(channels, q, group or None)
+                result = _filter_visible(result)
                 return _json_response(self, {"channels": result, "total": len(result)})
             except Exception as exc:
                 return _json_response(self, {"error": str(exc)}, 400)
@@ -123,10 +196,10 @@ class TVwhereAPIHandler(BaseHTTPRequestHandler):
             favs = FavoritesManager.get_all()
             for f in favs:
                 f.setdefault("id", channel_id(f.get("url", "")))
-            return _json_response(self, {"channels": favs})
+            return _json_response(self, {"channels": _filter_visible(favs)})
 
         if path == "/api/recent":
-            return _json_response(self, {"channels": HistoryManager.get_all()})
+            return _json_response(self, {"channels": _filter_visible(HistoryManager.get_all())})
 
         if path == "/api/epg":
             pid = (query.get("playlist") or [""])[0]
@@ -233,6 +306,14 @@ class TVwhereAPIHandler(BaseHTTPRequestHandler):
             ch = data.get("channel")
             if ch:
                 PlaylistService.record_play(ch)
+            return _json_response(self, {"ok": True})
+
+        if path == "/api/settings":
+            if "country" in data:
+                SettingsManager.set_country(data["country"])
+            if "show_unavailable" in data:
+                SettingsManager.set_show_unavailable(bool(data["show_unavailable"]))
+                SettingsManager.set_hide_dead(not bool(data["show_unavailable"]))
             return _json_response(self, {"ok": True})
 
         self.send_error(404)

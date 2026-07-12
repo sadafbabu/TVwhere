@@ -11,17 +11,21 @@ Inspired by open projects like [IPTVnator](https://github.com/4gray/iptvnator), 
 
 ### Desktop
 - Black & gray minimalist UI
-- Bangladesh / Bengali / Global playlists ([iptv-org](https://github.com/iptv-org/iptv))
-- **Group filter** — browse by category
+- **Country filter** — 50+ countries from [iptv-org](https://github.com/iptv-org/iptv), default **All Countries**
+- **Language playlists** — optional Bengali, Hindi, English, etc. in country dropdown
+- **Group filter** — browse by category (News, Sports, …)
+- **Working channels only** — dead streams hidden after background health check
 - **Recent channels** — watch history
 - Fast search — multi-word, accent-insensitive, relevance-ranked
 - Favorites, custom M3U URL
+- Silent auto-refresh every 45 minutes (no lag)
 - Playlist cache with offline stale fallback
 - Keyboard shortcuts: Ctrl+F search, Ctrl+R refresh, Esc clear
-- Remembers last tab between sessions
+- Remembers last country and sidebar tab between sessions
 
 ### Web / Mobile (`tvwhere --web`)
 - Responsive UI — phone, tablet, desktop browser
+- **Country + group filters** — same universal model as desktop
 - **Install as PWA** on Android/iOS (Add to Home Screen)
 - Built-in **HLS player** (HLS.js) with stream proxy
 - **Channel logos** in list
@@ -145,6 +149,10 @@ TVwhere/
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/api/countries` | GET | Countries + language playlists |
+| `/api/live/channels` | GET | Live channels (`?country=&group=&q=`) |
+| `/api/live/groups` | GET | Category list for country |
+| `/api/settings` | GET/POST | Country preference, health options |
 | `/api/playlists` | GET | List playlists |
 | `/api/playlists` | POST | Add M3U or Xtream |
 | `/api/playlists/{id}/channels` | GET | Channels (`?group=&q=`) |
@@ -171,7 +179,7 @@ TVwhere takes design ideas from these MIT/GPL projects (no proprietary code copi
 | [Fred TV / open-tv](https://github.com/Fredolx/open-tv) | Multi-source playlists, fast search, refresh |
 | [OpenTV Player](https://github.com/jaccon/opentv-player) | Web server mode, HLS.js + stream proxy for mobile |
 | [Extreme-InfiniTV](https://github.com/infinitel8p/Extreme-InfiniTV) | Xtream login, category groups, cross-platform |
-| [iptv-org](https://github.com/iptv-org/iptv) | Free Bangladesh / Global M3U sources |
+| [iptv-org](https://github.com/iptv-org/iptv) | Free global M3U sources by country & language |
 
 ## License
 

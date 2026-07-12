@@ -16,16 +16,12 @@
   <div id="app">
     <header class="topbar">
       <button id="menuBtn" class="icon-btn" aria-label="Menu">☰</button>
-      <h1>TVwhere</h1>
+      <h1 id="homeBtn" class="home-title">TVwhere</h1>
       <button id="addBtn" class="icon-btn" aria-label="Add playlist">+</button>
     </header>
 
     <div class="layout">
       <aside id="sidebar" class="sidebar">
-        <div class="sidebar-section">
-          <h2>Playlists</h2>
-          <ul id="playlistList"></ul>
-        </div>
         <div class="sidebar-section">
           <h2>Library</h2>
           <ul class="nav-list">
@@ -33,9 +29,17 @@
             <li><button data-view="recent">⏱ Recent</button></li>
           </ul>
         </div>
+        <div class="sidebar-section">
+          <h2>My Playlists</h2>
+          <ul id="playlistList"></ul>
+        </div>
       </aside>
 
       <main class="main">
+        <div class="toolbar toolbar-top">
+          <label class="toolbar-label">Country</label>
+          <select id="countrySelect"></select>
+        </div>
         <div class="toolbar">
           <input id="searchInput" type="search" placeholder="Search channels..." autocomplete="off" />
           <select id="groupSelect"><option value="">All groups</option></select>

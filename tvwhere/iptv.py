@@ -9,7 +9,7 @@ from pathlib import Path
 
 from tvwhere.config import CACHE_DIR, CACHE_TTL, ensure_dirs
 
-USER_AGENT = "TVwhere/2.0 (IPTV Player; +https://github.com/sadafbabu/TVwhere)"
+USER_AGENT = "TVwhere/2.1 (IPTV Player; +https://github.com/sadafbabu/TVwhere)"
 
 _LOGO_RE = re.compile(r'tvg-logo="([^"]*)"', re.I)
 _GROUP_RE = re.compile(r'group-title="([^"]*)"', re.I)

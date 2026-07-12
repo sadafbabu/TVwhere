@@ -7,20 +7,21 @@ from pathlib import Path
 
 from tvwhere.config import (
     THEME,
-    PLAYLISTS,
     PAGE_SIZE,
     SEARCH_DEBOUNCE_MS,
+    AUTO_REFRESH_MINUTES,
     SIDEBAR_TABS,
     FONTS,
     FavoritesManager,
     SettingsManager,
     ensure_dirs,
 )
+from tvwhere.countries import COUNTRIES, LANGUAGES, get_name
 from tvwhere.history import HistoryManager
 from tvwhere.icons import apply_window_icon, load_logo
-from tvwhere.iptv import get_channels_async, clear_playlist_cache, load_m3u_from_path
+from tvwhere.iptv import clear_playlist_cache, load_m3u_from_path
 from tvwhere.player import PlayerManager
-from tvwhere.search import filter_channels, sort_channels
+from tvwhere.search import sort_channels
 from tvwhere.service import PlaylistService
 from tvwhere.widgets import (
     ScrollableFrame,
@@ -38,9 +39,9 @@ class TVwhereApp:
     def __init__(self, root):
         self.root = root
         self.root.title("TVwhere")
-        self.root.geometry("960x640")
+        self.root.geometry("980x660")
         self.root.configure(bg=THEME["bg"])
-        self.root.minsize(720, 480)
+        self.root.minsize(760, 500)
         self._set_window_icon()
 
         ensure_dirs()
@@ -49,7 +50,7 @@ class TVwhereApp:
         self.channels = []
         self.displayed = []
         self.active_tab = None
-        self.current_playlist = SettingsManager.get_last_tab()
+        self.country_code = SettingsManager.get_country()
         self.active_group = "All"
         self._group_names = ["All"]
         self._render_offset = 0
@@ -60,10 +61,18 @@ class TVwhereApp:
         self._custom_loaded = False
         self._custom_url = ""
         self._web_server = None
+        self._channel_fp = ""
+        self._silent_refresh_job = None
+        self._status_flash_job = None
 
         self._setup_layout()
         self._bind_shortcuts()
-        self._select_tab(self.current_playlist)
+        last = SettingsManager.get_last_tab()
+        if last in SIDEBAR_TABS:
+            self._select_tab(last)
+        else:
+            self._show_channels()
+        self._schedule_silent_refresh()
 
     def _set_window_icon(self):
         self._icon = apply_window_icon(self.root)
@@ -92,9 +101,9 @@ class TVwhereApp:
         elif self.active_tab == "Recent":
             self._load_recent()
         elif self.active_tab == "Custom URL" and self._custom_loaded:
-            self._reload_custom()
-        elif self.active_tab in PLAYLISTS:
-            self._load_playlist(self.active_tab, force=True)
+            self._reload_custom(force=True)
+        elif self.active_tab == "channels":
+            self._load_country(self.country_code, force=True)
         return "break"
 
     def _setup_layout(self):
@@ -110,13 +119,16 @@ class TVwhereApp:
             tk.Label(header, image=self._logo, bg=THEME["bg_secondary"]).pack(
                 side="left", padx=(14, 6)
             )
-        tk.Label(
+        title_label = tk.Label(
             header,
             text="TVwhere",
             bg=THEME["bg_secondary"],
             fg=THEME["fg"],
             font=FONTS["title"],
-        ).pack(side="left")
+            cursor="hand2",
+        )
+        title_label.pack(side="left")
+        title_label.bind("<Button-1>", lambda e: self._show_channels())
 
         self.sidebar_buttons = {}
         for name in SIDEBAR_TABS:
@@ -170,7 +182,44 @@ class TVwhereApp:
         self.main_content = tk.Frame(self.root, bg=THEME["bg"])
         self.main_content.pack(side="right", fill="both", expand=True)
 
-        search_row = tk.Frame(self.main_content, bg=THEME["bg"], pady=10, padx=14)
+        country_row = tk.Frame(self.main_content, bg=THEME["bg"], padx=14, pady=(10, 4))
+        country_row.pack(fill="x")
+        tk.Label(
+            country_row,
+            text="Country",
+            bg=THEME["bg"],
+            fg=THEME["fg_dim"],
+            font=FONTS["small"],
+        ).pack(side="left", padx=(0, 8))
+        self.country_var = tk.StringVar(value=self._country_label(self.country_code))
+        labels = []
+        self._country_by_name = {}
+        for c in COUNTRIES:
+            labels.append(c["name"])
+            self._country_by_name[c["name"]] = c["code"]
+        for lang in LANGUAGES:
+            label = f"Language: {lang['name']}"
+            labels.append(label)
+            self._country_by_name[label] = lang["code"]
+        self.country_menu = tk.OptionMenu(
+            country_row,
+            self.country_var,
+            *labels,
+            command=self._on_country_change,
+        )
+        self.country_menu.configure(
+            bg=THEME["bg_card"],
+            fg=THEME["fg"],
+            activebackground=THEME["bg_hover"],
+            activeforeground=THEME["fg"],
+            highlightthickness=0,
+            borderwidth=0,
+            font=FONTS["small"],
+        )
+        self.country_menu["menu"].configure(bg=THEME["bg_card"], fg=THEME["fg"])
+        self.country_menu.pack(side="left", fill="x", expand=True)
+
+        search_row = tk.Frame(self.main_content, bg=THEME["bg"], pady=6, padx=14)
         search_row.pack(fill="x")
 
         self.search_entry = SearchEntry(
@@ -216,6 +265,37 @@ class TVwhereApp:
         self.status_bar = StatusBar(self.main_content)
         self.status_bar.pack(side="bottom", fill="x")
 
+    def _country_label(self, code: str) -> str:
+        for lang in LANGUAGES:
+            if lang["code"] == code:
+                return f"Language: {lang['name']}"
+        return get_name(code)
+
+    def _set_country_menu_enabled(self, enabled: bool):
+        state = "normal" if enabled else "disabled"
+        self.country_menu.configure(state=state)
+
+    def _on_country_change(self, name):
+        code = self._country_by_name.get(name, self.country_code)
+        if code == self.country_code:
+            return
+        self.country_code = code
+        SettingsManager.set_country(code)
+        if self.active_tab == "channels":
+            self._load_country(code)
+
+    def _show_channels(self):
+        for name, btn in self.sidebar_buttons.items():
+            btn.set_active(False)
+        self.active_tab = "channels"
+        self.search_entry.clear()
+        self.active_group = "All"
+        self.group_var.set("All")
+        self._set_group_menu_enabled(True)
+        self._set_country_menu_enabled(True)
+        SettingsManager.set_last_tab("channels")
+        self._load_country(self.country_code)
+
     def _start_web_ui(self):
         if self._web_server:
             webbrowser.open("http://127.0.0.1:8765")
@@ -235,6 +315,9 @@ class TVwhereApp:
         self._fav_names = set(FavoritesManager.load().keys())
 
     def _select_tab(self, tab_name):
+        if tab_name not in SIDEBAR_TABS:
+            self._show_channels()
+            return
         if self.active_tab == tab_name and tab_name != "Custom URL":
             return
 
@@ -248,23 +331,23 @@ class TVwhereApp:
 
         if tab_name == "Favorites":
             self._set_group_menu_enabled(False)
+            self._set_country_menu_enabled(False)
             self._load_favorites()
         elif tab_name == "Recent":
             self._set_group_menu_enabled(False)
+            self._set_country_menu_enabled(False)
             self._load_recent()
         elif tab_name == "Custom URL":
             self._set_group_menu_enabled(True)
+            self._set_country_menu_enabled(False)
             if self._custom_loaded and self.channels:
                 self._rebuild_groups(self.channels)
                 self._apply_filters()
                 self.status_bar.set_status("Custom playlist")
-                self.status_bar.set_count(len(self.channels))
+                self.status_bar.set_count(len(self.displayed))
             else:
                 self._prompt_custom_url()
-        else:
-            self._set_group_menu_enabled(True)
-            SettingsManager.set_last_tab(tab_name)
-            self._load_playlist(tab_name)
+        SettingsManager.set_last_tab(tab_name)
 
     def _set_group_menu_enabled(self, enabled: bool):
         state = "normal" if enabled else "disabled"
@@ -291,63 +374,101 @@ class TVwhereApp:
         self._load_generation += 1
         return self._load_generation
 
-    def _load_playlist(self, name, force: bool = False):
-        url = PLAYLISTS.get(name)
-        if not url:
-            return
+    def _load_country(self, code: str, force: bool = False, silent: bool = False):
+        from tvwhere.countries import get_url
 
+        url = get_url(code)
         if force:
             clear_playlist_cache(url)
 
-        self.current_playlist = name
         gen = self._next_generation()
-        self._show_loading(True, f"Loading {name}")
-        self.scroll_frame.clear()
-        self._hide_empty()
-        self.status_bar.set_status(f"Loading {name}...")
+        if not silent:
+            self._show_loading(True, get_name(code))
+            self.scroll_frame.clear()
+            self._hide_empty()
+            self.status_bar.set_status(f"Loading {get_name(code)}...")
 
-        def on_ok(channels, from_cache=False, g=gen):
-            self.root.after(0, self._on_playlist_loaded, channels, from_cache, g)
+        def worker():
+            try:
+                channels = PlaylistService.load_country_channels(code, force=force)
+                self.root.after(0, self._on_channels_ready, channels, False, gen, silent)
+            except Exception as exc:
+                self.root.after(0, self._on_playlist_error, str(exc), gen)
 
-        def on_err(err, g=gen):
-            self.root.after(0, self._on_playlist_error, err, g)
+        threading.Thread(target=worker, daemon=True).start()
 
-        get_channels_async(url, callback=on_ok, error_callback=on_err)
-
-    def _on_playlist_loaded(self, channels, from_cache=False, generation=0):
+    def _on_channels_ready(self, channels, from_cache=False, generation=0, silent=False):
         if generation != self._load_generation:
             return
 
-        self.channels = sort_channels(channels)
-        self._rebuild_groups(self.channels)
-        self._show_loading(False)
-        self._apply_filters()
+        channels = sort_channels(channels)
+        new_fp = PlaylistService.fingerprint(channels)
 
-        if from_cache:
+        if silent and new_fp == self._channel_fp:
+            self._flash_status("Up to date")
+            return
+
+        scroll_pos = None
+        if silent and self._channel_fp:
+            try:
+                scroll_pos = self.scroll_frame.canvas.yview()[0]
+            except Exception:
+                pass
+
+        self.channels = channels
+        self._channel_fp = new_fp
+        self._rebuild_groups(self.channels)
+
+        if not silent:
+            self._show_loading(False)
+
+        self._apply_filters(preserve_scroll=scroll_pos)
+
+        if silent:
+            self._flash_status("Updated" if not from_cache else "Updated (cached)")
+        elif from_cache:
             self.status_bar.set_status("Ready (cached)")
-        elif self.active_tab == "Favorites":
-            self.status_bar.set_status("Favorites")
-        elif self.active_tab == "Recent":
-            self.status_bar.set_status("Recent")
         else:
-            self.status_bar.set_status("Ready")
+            self.status_bar.set_status(f"Ready — {get_name(self.country_code)}")
+
+        PlaylistService.start_health_checks(
+            self.channels,
+            on_dead=lambda: self.root.after(0, self._on_health_prune),
+            on_done=lambda _: self.root.after(0, self._on_health_prune),
+        )
+
+    def _on_health_prune(self):
+        if self.active_tab not in ("channels", "Custom URL"):
+            return
+        scroll_pos = None
+        try:
+            scroll_pos = self.scroll_frame.canvas.yview()[0]
+        except Exception:
+            pass
+        alive = PlaylistService.apply_health(self.channels)
+        if len(alive) == len(self.displayed):
+            return
+        self.channels = alive
+        self._channel_fp = PlaylistService.fingerprint(alive)
+        self._apply_filters(preserve_scroll=scroll_pos)
 
     def _on_playlist_error(self, error_msg, generation=0):
         if generation != self._load_generation:
             return
-
         self._show_loading(False)
         self.scroll_frame.clear()
         self._show_empty("Could not load playlist", error_msg)
         self.status_bar.set_status("Error")
         self.status_bar.set_count(0)
-        messagebox.showerror("Playlist Error", error_msg)
+        if "silent" not in error_msg.lower():
+            messagebox.showerror("Playlist Error", error_msg)
 
     def _load_favorites(self):
         self._show_loading(False)
         self.scroll_frame.clear()
         favs = sort_channels(FavoritesManager.get_all())
         self.channels = favs
+        self._channel_fp = PlaylistService.fingerprint(favs)
         if not favs:
             self._show_empty(
                 "No favorites yet",
@@ -365,6 +486,7 @@ class TVwhereApp:
         self.scroll_frame.clear()
         recent = HistoryManager.get_all()
         self.channels = recent
+        self._channel_fp = PlaylistService.fingerprint(recent)
         if not recent:
             self._show_empty("No recent channels", "Channels you play will appear here.")
             self.status_bar.set_status("Recent")
@@ -380,25 +502,19 @@ class TVwhereApp:
         url = dialog.result
 
         if not url:
-            prev = self.current_playlist or SettingsManager.get_last_tab()
+            prev = SettingsManager.get_last_tab()
             self._custom_loaded = False
             for name, btn in self.sidebar_buttons.items():
                 btn.set_active(name == prev)
             self.active_tab = prev
-            if prev == "Favorites":
-                self._load_favorites()
-            elif prev == "Recent":
-                self._load_recent()
-            elif prev in PLAYLISTS:
-                self._load_playlist(prev)
+            self._select_tab(prev)
             return
 
         self._custom_url = url
         self._custom_loaded = True
-        self.current_playlist = None
         self._reload_custom()
 
-    def _reload_custom(self):
+    def _reload_custom(self, force: bool = False):
         gen = self._next_generation()
         self._show_loading(True, "Loading custom playlist")
         self.scroll_frame.clear()
@@ -410,28 +526,56 @@ class TVwhereApp:
             def worker():
                 try:
                     channels = sort_channels(load_m3u_from_path(str(local)))
-                    self.root.after(0, self._on_custom_loaded, channels, False, gen)
+                    self.root.after(0, self._on_channels_ready, channels, False, gen, False)
                 except Exception as exc:
                     self.root.after(0, self._on_playlist_error, str(exc), gen)
 
             threading.Thread(target=worker, daemon=True).start()
             return
 
-        clear_playlist_cache(self._custom_url)
+        if force:
+            clear_playlist_cache(self._custom_url)
 
-        def on_ok(channels, from_cache=False, g=gen):
-            self.root.after(0, self._on_custom_loaded, channels, from_cache, g)
+        def worker():
+            try:
+                from tvwhere.iptv import fetch_and_parse
 
-        def on_err(err, g=gen):
-            self.root.after(0, self._on_playlist_error, err, g)
+                result = {"channels": None, "err": None}
 
-        get_channels_async(self._custom_url, callback=on_ok, error_callback=on_err)
+                def ok(ch, **_):
+                    result["channels"] = ch
 
-    def _on_custom_loaded(self, channels, from_cache=False, generation=0):
-        if generation != self._load_generation:
-            return
-        self._on_playlist_loaded(channels, from_cache, generation)
-        self.status_bar.set_status("Custom playlist (cached)" if from_cache else "Custom playlist")
+                def err(e):
+                    result["err"] = e
+
+                fetch_and_parse(self._custom_url, ok, err)
+                if result["err"]:
+                    self.root.after(0, self._on_playlist_error, result["err"], gen)
+                else:
+                    self.root.after(
+                        0, self._on_channels_ready, sort_channels(result["channels"]), False, gen, False
+                    )
+            except Exception as exc:
+                self.root.after(0, self._on_playlist_error, str(exc), gen)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _schedule_silent_refresh(self):
+        if self._silent_refresh_job:
+            self.root.after_cancel(self._silent_refresh_job)
+        ms = AUTO_REFRESH_MINUTES * 60 * 1000
+        self._silent_refresh_job = self.root.after(ms, self._silent_refresh_tick)
+
+    def _silent_refresh_tick(self):
+        if self.active_tab == "channels":
+            self._load_country(self.country_code, force=False, silent=True)
+        self._schedule_silent_refresh()
+
+    def _flash_status(self, text: str, ms: int = 2500):
+        if self._status_flash_job:
+            self.root.after_cancel(self._status_flash_job)
+        self.status_bar.set_status(text)
+        self._status_flash_job = self.root.after(ms, lambda: self.status_bar.set_status("Ready"))
 
     def _show_loading(self, show: bool, message: str = "Loading channels"):
         if show:
@@ -455,19 +599,21 @@ class TVwhereApp:
             self._empty_state.destroy()
             self._empty_state = None
 
-    def _apply_filters(self):
+    def _apply_filters(self, preserve_scroll=None):
         query = self.search_entry.get_text()
         filtered = PlaylistService.search(
             self.channels,
             query,
             None if self.active_group == "All" else self.active_group,
         )
-        self._display_channels(filtered)
+        if self.active_tab in ("channels", "Custom URL", "Favorites", "Recent"):
+            filtered = PlaylistService.apply_health(filtered)
+        self._display_channels(filtered, preserve_scroll=preserve_scroll)
         self.status_bar.set_count(len(filtered))
         if query.strip():
             self.status_bar.set_status(f'Search: "{query.strip()}"')
 
-    def _display_channels(self, channel_list):
+    def _display_channels(self, channel_list, preserve_scroll=None):
         self.displayed = list(channel_list)
         self._render_offset = 0
         self._refresh_fav_names()
@@ -479,11 +625,13 @@ class TVwhereApp:
             if query:
                 self._show_empty("No results", f'Nothing matched "{query}".')
             else:
-                self._show_empty("No channels", "This playlist is empty.")
+                self._show_empty("No channels", "No working channels found for this filter.")
             self.status_bar.set_count(0)
             return
 
         self._append_channel_batch()
+        if preserve_scroll is not None:
+            self.root.after(50, lambda: self.scroll_frame.canvas.yview_moveto(preserve_scroll))
 
     def _append_channel_batch(self):
         if self._render_offset >= len(self.displayed):
@@ -531,9 +679,6 @@ class TVwhereApp:
             messagebox.showerror(
                 "Player Required",
                 "Install mpv (recommended) or VLC to play streams.\n\n"
-                "Windows: winget install mpv\n"
-                "macOS:   brew install mpv\n"
-                "Linux:   sudo pacman -S mpv  (or apt install mpv)\n\n"
                 "Or use Web UI: tvwhere --web --open",
             )
 
@@ -556,18 +701,16 @@ class TVwhereApp:
     def _on_search_change(self, query):
         if self._search_job:
             self.root.after_cancel(self._search_job)
-        captured = query
-        self._search_job = self.root.after(
-            SEARCH_DEBOUNCE_MS,
-            lambda q=captured: self._apply_search(q),
-        )
+        self._search_job = self.root.after(SEARCH_DEBOUNCE_MS, self._apply_search)
 
-    def _apply_search(self, query):
+    def _apply_search(self):
         self._search_job = None
         self._apply_filters()
 
     def on_close(self):
         if self._search_job:
             self.root.after_cancel(self._search_job)
+        if self._silent_refresh_job:
+            self.root.after_cancel(self._silent_refresh_job)
         self.player.stop()
         self.root.destroy()

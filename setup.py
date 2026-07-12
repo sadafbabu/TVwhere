@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="tvwhere",
-    version="2.0.0",
+    version="2.1.0",
     description="Minimalist cross-platform IPTV player",
     author="Sadaf",
     license="MIT",

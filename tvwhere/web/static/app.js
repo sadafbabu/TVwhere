@@ -1,11 +1,19 @@
+const AUTO_REFRESH_MS = 45 * 60 * 1000;
+const HEALTH_POLL_MS = 90 * 1000;
+
 const state = {
-  view: "playlist",
+  view: "live",
+  country: "global",
   playlistId: null,
   channels: [],
+  fingerprint: "",
   favorites: new Set(),
   playingUrl: null,
   hls: null,
   debounce: null,
+  silentTimer: null,
+  healthTimer: null,
+  busy: false,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -13,6 +21,7 @@ const playlistList = $("#playlistList");
 const channelList = $("#channelList");
 const searchInput = $("#searchInput");
 const groupSelect = $("#groupSelect");
+const countrySelect = $("#countrySelect");
 const playerPanel = $("#playerPanel");
 const video = $("#video");
 const nowPlaying = $("#nowPlaying");
@@ -39,22 +48,36 @@ function streamUrl(url) {
   return `/api/stream?url=${encodeURIComponent(url)}`;
 }
 
-async function loadPlaylists() {
-  const { playlists } = await api("/api/playlists");
-  playlistList.innerHTML = "";
-  playlists.forEach((pl) => {
-    const li = document.createElement("li");
-    const btn = document.createElement("button");
-    btn.textContent = pl.name;
-    btn.dataset.id = pl.id;
-    if (pl.id === state.playlistId) btn.classList.add("active");
-    btn.onclick = () => selectPlaylist(pl.id);
-    li.appendChild(btn);
-    playlistList.appendChild(li);
+function clearNavActive() {
+  document.querySelectorAll("#playlistList button").forEach((b) => b.classList.remove("active"));
+  document.querySelectorAll(".nav-list button").forEach((b) => b.classList.remove("active"));
+}
+
+function setToolbarForView() {
+  const isLive = state.view === "live";
+  countrySelect.disabled = !isLive;
+  groupSelect.disabled = state.view === "favorites" || state.view === "recent";
+}
+
+function populateCountrySelect(regions, selected) {
+  countrySelect.innerHTML = "";
+  regions.countries.forEach((c) => {
+    const opt = document.createElement("option");
+    opt.value = c.code;
+    opt.textContent = c.name;
+    opt.selected = c.code === selected;
+    countrySelect.appendChild(opt);
   });
-  if (!state.playlistId && playlists.length) {
-    selectPlaylist(playlists[0].id);
-  }
+  const langGroup = document.createElement("optgroup");
+  langGroup.label = "Languages";
+  regions.languages.forEach((l) => {
+    const opt = document.createElement("option");
+    opt.value = l.code;
+    opt.textContent = l.name;
+    opt.selected = l.code === selected;
+    langGroup.appendChild(opt);
+  });
+  countrySelect.appendChild(langGroup);
 }
 
 async function loadFavorites() {
@@ -63,10 +86,67 @@ async function loadFavorites() {
   return channels;
 }
 
-async function loadChannels(refresh = false) {
-  loading.classList.remove("hidden");
-  emptyState.classList.add("hidden");
-  channelList.innerHTML = "";
+async function loadPlaylists() {
+  const { playlists } = await api("/api/playlists");
+  playlistList.innerHTML = "";
+  playlists.forEach((pl) => {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.textContent = pl.name;
+    btn.dataset.id = pl.id;
+    if (state.view === "playlist" && pl.id === state.playlistId) btn.classList.add("active");
+    btn.onclick = () => selectPlaylist(pl.id);
+    li.appendChild(btn);
+    playlistList.appendChild(li);
+  });
+}
+
+function buildQuery(refresh) {
+  const qs = new URLSearchParams();
+  const group = groupSelect.value;
+  const q = searchInput.value.trim();
+  if (state.view === "live") qs.set("country", state.country);
+  if (group) qs.set("group", group);
+  if (q) qs.set("q", q);
+  if (refresh) qs.set("refresh", "1");
+  return qs;
+}
+
+async function loadGroups() {
+  if (state.view === "live") {
+    const qs = new URLSearchParams({ country: state.country });
+    const { groups } = await api(`/api/live/groups?${qs}`);
+    fillGroupSelect(groups);
+    return;
+  }
+  if (state.view === "playlist" && state.playlistId) {
+    const { groups } = await api(`/api/playlists/${state.playlistId}/groups`);
+    fillGroupSelect(groups);
+  }
+}
+
+function fillGroupSelect(groups) {
+  const current = groupSelect.value;
+  groupSelect.innerHTML = '<option value="">All groups</option>';
+  groups.forEach((g) => {
+    const opt = document.createElement("option");
+    opt.value = g.name;
+    opt.textContent = `${g.name} (${g.count})`;
+    groupSelect.appendChild(opt);
+  });
+  groupSelect.value = current;
+}
+
+async function loadChannels(refresh = false, silent = false) {
+  if (state.busy && silent) return;
+  state.busy = true;
+
+  if (!silent) {
+    loading.classList.remove("hidden");
+    emptyState.classList.add("hidden");
+    channelList.innerHTML = "";
+  }
+
   try {
     let channels = [];
     if (state.view === "favorites") {
@@ -74,41 +154,29 @@ async function loadChannels(refresh = false) {
     } else if (state.view === "recent") {
       const res = await api("/api/recent");
       channels = res.channels;
+    } else if (state.view === "live") {
+      const qs = buildQuery(refresh);
+      const res = await api(`/api/live/channels?${qs}`);
+      channels = res.channels;
+      if (res.fingerprint) state.fingerprint = res.fingerprint;
+      if (!silent && !searchInput.value.trim() && !groupSelect.value) await loadGroups();
     } else if (state.playlistId) {
-      const group = groupSelect.value;
-      const q = searchInput.value.trim();
-      const qs = new URLSearchParams();
-      if (group) qs.set("group", group);
-      if (q) qs.set("q", q);
-      if (refresh) qs.set("refresh", "1");
+      const qs = buildQuery(refresh);
       const res = await api(`/api/playlists/${state.playlistId}/channels?${qs}`);
       channels = res.channels;
-      if (!group && !q) await loadGroups();
+      if (!silent && !searchInput.value.trim() && !groupSelect.value) await loadGroups();
     }
     state.channels = channels;
     renderChannels(channels);
   } catch (err) {
-    emptyState.textContent = err.message;
-    emptyState.classList.remove("hidden");
+    if (!silent) {
+      emptyState.textContent = err.message;
+      emptyState.classList.remove("hidden");
+    }
   } finally {
-    loading.classList.add("hidden");
+    if (!silent) loading.classList.add("hidden");
+    state.busy = false;
   }
-}
-
-async function loadGroups() {
-  if (!state.playlistId || state.view !== "playlist") return;
-  try {
-    const { groups } = await api(`/api/playlists/${state.playlistId}/groups`);
-    const current = groupSelect.value;
-    groupSelect.innerHTML = '<option value="">All groups</option>';
-    groups.forEach((g) => {
-      const opt = document.createElement("option");
-      opt.value = g.name;
-      opt.textContent = `${g.name} (${g.count})`;
-      groupSelect.appendChild(opt);
-    });
-    groupSelect.value = current;
-  } catch (_) {}
 }
 
 function renderChannels(channels) {
@@ -143,11 +211,9 @@ function renderChannels(channels) {
     name.textContent = ch.name;
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = [
-      ch.radio ? "Radio" : null,
-      ch.group,
-      ch.resolution,
-    ].filter(Boolean).join(" · ");
+    meta.textContent = [ch.radio ? "Radio" : null, ch.group, ch.resolution]
+      .filter(Boolean)
+      .join(" · ");
     info.appendChild(name);
     info.appendChild(meta);
     row.appendChild(info);
@@ -223,14 +289,24 @@ function playChannel(ch) {
   }
 }
 
+function selectLive() {
+  state.view = "live";
+  state.playlistId = null;
+  clearNavActive();
+  setToolbarForView();
+  loadChannels();
+  closeSidebar();
+}
+
 function selectPlaylist(id) {
   state.view = "playlist";
   state.playlistId = id;
+  clearNavActive();
   document.querySelectorAll("#playlistList button").forEach((b) => {
     b.classList.toggle("active", b.dataset.id === id);
   });
-  document.querySelectorAll(".nav-list button").forEach((b) => b.classList.remove("active"));
-  groupSelect.disabled = false;
+  setToolbarForView();
+  groupSelect.value = "";
   loadChannels();
   closeSidebar();
 }
@@ -238,19 +314,45 @@ function selectPlaylist(id) {
 function selectView(view) {
   state.view = view;
   state.playlistId = null;
-  document.querySelectorAll("#playlistList button").forEach((b) => b.classList.remove("active"));
+  clearNavActive();
   document.querySelectorAll(".nav-list button").forEach((b) => {
     b.classList.toggle("active", b.dataset.view === view);
   });
-  groupSelect.disabled = true;
+  setToolbarForView();
+  groupSelect.value = "";
   loadChannels();
   closeSidebar();
+}
+
+async function silentRefresh() {
+  if (state.view !== "live" || state.busy) return;
+  try {
+    const qs = new URLSearchParams({ country: state.country, refresh: "1" });
+    const res = await api(`/api/live/channels?${qs}`);
+    if (res.fingerprint && res.fingerprint !== state.fingerprint) {
+      state.fingerprint = res.fingerprint;
+      await loadChannels(false, true);
+    }
+  } catch (_) {}
+}
+
+function scheduleTimers() {
+  if (state.silentTimer) clearInterval(state.silentTimer);
+  state.silentTimer = setInterval(silentRefresh, AUTO_REFRESH_MS);
+
+  if (state.healthTimer) clearInterval(state.healthTimer);
+  state.healthTimer = setInterval(() => {
+    if (["live", "playlist", "favorites", "recent"].includes(state.view)) {
+      loadChannels(false, true);
+    }
+  }, HEALTH_POLL_MS);
 }
 
 function openModal() {
   modal.classList.remove("hidden");
   $("#modalError").textContent = "";
 }
+
 function closeModal() {
   modal.classList.add("hidden");
 }
@@ -271,10 +373,21 @@ document.querySelectorAll(".tab").forEach((tab) => {
 
 $("#menuBtn").onclick = () => $("#sidebar").classList.toggle("open");
 $("#addBtn").onclick = openModal;
+$("#homeBtn").onclick = () => selectLive();
 $("#modalCancel").onclick = closeModal;
 $("#refreshBtn").onclick = () => loadChannels(true);
 $("#extPlayBtn").onclick = () => {
   if (state.playingUrl) window.open(state.playingUrl, "_blank");
+};
+
+countrySelect.onchange = async () => {
+  state.country = countrySelect.value;
+  await api("/api/settings", {
+    method: "POST",
+    body: JSON.stringify({ country: state.country }),
+  });
+  groupSelect.value = "";
+  loadChannels();
 };
 
 searchInput.oninput = () => {
@@ -310,7 +423,8 @@ $("#modalSave").onclick = async () => {
     }
     closeModal();
     await loadPlaylists();
-    loadChannels();
+    const last = playlistList.querySelector("button:last-child");
+    if (last) selectPlaylist(last.dataset.id);
   } catch (err) {
     $("#modalError").textContent = err.message;
   }
@@ -324,4 +438,17 @@ if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
 
-loadFavorites().then(loadPlaylists);
+async function init() {
+  const [settings, regions] = await Promise.all([
+    api("/api/settings"),
+    api("/api/countries"),
+  ]);
+  state.country = settings.country || "global";
+  populateCountrySelect(regions, state.country);
+  await loadFavorites();
+  await loadPlaylists();
+  selectLive();
+  scheduleTimers();
+}
+
+init();

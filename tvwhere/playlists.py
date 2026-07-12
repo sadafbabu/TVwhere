@@ -1,27 +1,17 @@
-"""User playlist library — multiple M3U / Xtream sources."""
+"""User playlist library — M3U / Xtream / local file sources."""
 
 import json
 import uuid
 from pathlib import Path
 
-from tvwhere.config import CONFIG_DIR, PLAYLISTS, ensure_dirs
+from tvwhere.config import CONFIG_DIR, ensure_dirs
 
 PLAYLISTS_FILE = CONFIG_DIR / "playlists.json"
 
 
 def _builtin_playlists() -> list:
-    items = []
-    for key, url in PLAYLISTS.items():
-        items.append(
-            {
-                "id": f"builtin-{key.lower()}",
-                "name": key,
-                "type": "builtin",
-                "url": url,
-                "builtin_key": key,
-            }
-        )
-    return items
+    """User-added playlists only; Live TV uses country filter."""
+    return []
 
 
 class PlaylistManager:
@@ -42,16 +32,16 @@ class PlaylistManager:
                 with open(PLAYLISTS_FILE, encoding="utf-8") as f:
                     data = json.load(f)
                     if isinstance(data, list):
-                        user = data
+                        user = [p for p in data if not p.get("id", "").startswith("builtin-")]
             except Exception:
                 pass
-        cls._cache = _builtin_playlists() + user
+        cls._cache = user
         return cls._cache
 
     @classmethod
     def save_user(cls, playlists: list):
         ensure_dirs()
-        cls._cache = _builtin_playlists() + playlists
+        cls._cache = list(playlists)
         try:
             with open(PLAYLISTS_FILE, "w", encoding="utf-8") as f:
                 json.dump(playlists, f, indent=2, ensure_ascii=False)
@@ -74,7 +64,7 @@ class PlaylistManager:
             "url": url.strip(),
             "epg_url": epg_url.strip(),
         }
-        user = [p for p in cls.load_all() if not p["id"].startswith("builtin-")]
+        user = list(cls.load_all())
         user.append(entry)
         cls.save_user(user)
         return entry
@@ -89,7 +79,7 @@ class PlaylistManager:
             "username": username.strip(),
             "password": password.strip(),
         }
-        user = [p for p in cls.load_all() if not p["id"].startswith("builtin-")]
+        user = list(cls.load_all())
         user.append(entry)
         cls.save_user(user)
         return entry
@@ -109,16 +99,14 @@ class PlaylistManager:
             "type": "file",
             "url": str(dest),
         }
-        user = [p for p in cls.load_all() if not p["id"].startswith("builtin-")]
+        user = list(cls.load_all())
         user.append(entry)
         cls.save_user(user)
         return entry
 
     @classmethod
     def remove(cls, playlist_id: str) -> bool:
-        if playlist_id.startswith("builtin-"):
-            return False
-        user = [p for p in cls.load_all() if not p["id"].startswith("builtin-")]
+        user = list(cls.load_all())
         new_user = [p for p in user if p["id"] != playlist_id]
         if len(new_user) == len(user):
             return False
@@ -127,4 +115,4 @@ class PlaylistManager:
 
     @classmethod
     def user_playlists(cls) -> list:
-        return [p for p in cls.load_all() if not p["id"].startswith("builtin-")]
+        return list(cls.load_all())

@@ -37,22 +37,22 @@ def resolve_icon_path() -> Optional[Path]:
 
 ICON_PATH = resolve_icon_path()
 
-PLAYLISTS = {
-    "Bangladesh": "https://iptv-org.github.io/iptv/countries/bd.m3u",
-    "Bengali": "https://iptv-org.github.io/iptv/languages/ben.m3u",
-    "Global": "https://iptv-org.github.io/iptv/index.m3u",
-}
+# Legacy — country filter replaces per-country sidebar tabs
+PLAYLISTS = {}
 
 SIDEBAR_TABS = [
-    "Bangladesh",
-    "Bengali",
-    "Global",
     "Favorites",
     "Recent",
     "Custom URL",
 ]
 
-DEFAULT_TAB = "Bangladesh"
+DEFAULT_TAB = "channels"
+DEFAULT_COUNTRY = "global"
+
+CACHE_TTL = 3600
+PAGE_SIZE = 80
+SEARCH_DEBOUNCE_MS = 180
+AUTO_REFRESH_MINUTES = 45
 
 THEME = {
     "bg": "#0a0a0a",
@@ -72,11 +72,6 @@ THEME = {
     "empty_fg": "#5a5a5a",
     "error_fg": "#e07070",
 }
-
-CACHE_TTL = 3600
-PAGE_SIZE = 80
-SEARCH_DEBOUNCE_MS = 150
-
 
 def _font_family() -> str:
     if sys.platform == "win32":
@@ -137,14 +132,55 @@ class SettingsManager:
     @classmethod
     def get_last_tab(cls) -> str:
         tab = cls.load().get("last_tab", DEFAULT_TAB)
-        return tab if tab in SIDEBAR_TABS and tab != "Custom URL" else DEFAULT_TAB
+        if tab in SIDEBAR_TABS:
+            return tab
+        legacy = {"Live TV", "Bangladesh", "Bengali", "Global", "channels"}
+        if tab in legacy:
+            return DEFAULT_TAB
+        return DEFAULT_TAB
 
     @classmethod
     def set_last_tab(cls, tab: str):
-        if tab == "Custom URL":
-            return
         data = dict(cls.load())
-        data["last_tab"] = tab
+        if tab == "channels":
+            data["last_tab"] = DEFAULT_TAB
+        elif tab in SIDEBAR_TABS:
+            data["last_tab"] = tab
+        else:
+            return
+        cls.save(data)
+
+    @classmethod
+    def get_country(cls) -> str:
+        from tvwhere.countries import DEFAULT_COUNTRY as DC, is_valid_code
+
+        code = cls.load().get("country", DEFAULT_COUNTRY)
+        return code if is_valid_code(code) else DC
+
+    @classmethod
+    def set_country(cls, code: str):
+        data = dict(cls.load())
+        data["country"] = code
+        cls.save(data)
+
+    @classmethod
+    def hide_dead_channels(cls) -> bool:
+        return cls.load().get("hide_dead", True)
+
+    @classmethod
+    def set_hide_dead(cls, value: bool):
+        data = dict(cls.load())
+        data["hide_dead"] = value
+        cls.save(data)
+
+    @classmethod
+    def show_unavailable(cls) -> bool:
+        return cls.load().get("show_unavailable", False)
+
+    @classmethod
+    def set_show_unavailable(cls, value: bool):
+        data = dict(cls.load())
+        data["show_unavailable"] = value
         cls.save(data)
 
 
