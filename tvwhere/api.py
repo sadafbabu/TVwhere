@@ -128,6 +128,31 @@ class TVwhereAPIHandler(BaseHTTPRequestHandler):
         if path == "/api/recent":
             return _json_response(self, {"channels": HistoryManager.get_all()})
 
+        if path == "/api/epg":
+            pid = (query.get("playlist") or [""])[0]
+            cid = (query.get("channel") or [""])[0]
+            try:
+                pl = PlaylistManager.get(pid)
+                if not pl:
+                    return _json_response(self, {"now": None, "next": None})
+                if pid not in _CHANNEL_CACHE:
+                    _CHANNEL_CACHE[pid] = PlaylistService.load_channels_sync(pid)
+                ch = next((c for c in _CHANNEL_CACHE[pid] if c.get("id") == cid), None)
+                if not ch:
+                    return _json_response(self, {"now": None, "next": None})
+                epg = PlaylistService.get_epg_for_channel(ch, pl)
+                for key in ("now", "next"):
+                    if epg.get(key):
+                        epg[key] = {
+                            "title": epg[key].get("title", ""),
+                            "description": epg[key].get("description", ""),
+                            "start": epg[key].get("start", ""),
+                            "stop": epg[key].get("stop", ""),
+                        }
+                return _json_response(self, epg)
+            except Exception as exc:
+                return _json_response(self, {"error": str(exc)}, 400)
+
         if path == "/api/stream":
             url = (query.get("url") or [""])[0]
             url = urllib.parse.unquote(url)

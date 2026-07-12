@@ -1,4 +1,7 @@
 import tkinter as tk
+from pathlib import Path
+from tkinter import filedialog
+
 from tvwhere.config import THEME, FONTS
 
 
@@ -462,7 +465,7 @@ class EmptyState(tk.Frame):
 
 
 class UrlDialog(tk.Toplevel):
-    """Themed dialog for custom M3U URLs (replaces system simpledialog)."""
+    """Themed dialog for custom M3U URLs or local files."""
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -476,7 +479,7 @@ class UrlDialog(tk.Toplevel):
 
         tk.Label(
             self,
-            text="Enter M3U playlist URL",
+            text="M3U playlist URL or local file",
             bg=THEME["bg_secondary"],
             fg=THEME["fg"],
             font=FONTS["heading"],
@@ -519,6 +522,21 @@ class UrlDialog(tk.Toplevel):
 
         btn_row = tk.Frame(self, bg=THEME["bg_secondary"], pady=14, padx=20)
         btn_row.pack(fill="x")
+
+        tk.Button(
+            btn_row,
+            text="Browse",
+            command=self._browse,
+            bg=THEME["bg_card"],
+            fg=THEME["fg_dim"],
+            activebackground=THEME["bg_hover"],
+            activeforeground=THEME["fg"],
+            relief="flat",
+            bd=0,
+            padx=14,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="left", padx=(6, 0))
 
         tk.Button(
             btn_row,
@@ -585,6 +603,19 @@ class UrlDialog(tk.Toplevel):
         except tk.TclError:
             pass
 
+    def _browse(self):
+        path = filedialog.askopenfilename(
+            title="Select M3U playlist",
+            filetypes=[
+                ("M3U playlists", "*.m3u *.m3u8"),
+                ("All files", "*.*"),
+            ],
+        )
+        if path:
+            self.entry.delete(0, tk.END)
+            self.entry.insert(0, path)
+            self._on_key(None)
+
     def _ok(self):
         value = self.entry.get().strip()
         if not value:
@@ -594,8 +625,13 @@ class UrlDialog(tk.Toplevel):
             self.result = value
             self.destroy()
             return
+        local = Path(value).expanduser()
+        if local.is_file():
+            self.result = str(local)
+            self.destroy()
+            return
         self.entry.configure(fg=THEME["error_fg"])
-        self.error_label.configure(text="Enter a valid http(s) playlist URL.")
+        self.error_label.configure(text="Enter a valid URL or choose a local .m3u file.")
         self.title("Custom Playlist")
 
     def _cancel(self):

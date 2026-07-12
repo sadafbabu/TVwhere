@@ -119,6 +119,9 @@ def load_m3u_from_path(path: str) -> list:
     if not p.is_file():
         raise FileNotFoundError(f"Playlist file not found: {path}")
     return parse_m3u_file(str(p))
+
+
+def clear_playlist_cache(url: str):
     path = _cache_file(url)
     if path.exists():
         try:

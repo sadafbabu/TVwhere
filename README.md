@@ -151,6 +151,7 @@ TVwhere/
 | `/api/playlists/{id}/groups` | GET | Category list |
 | `/api/favorites` | GET/POST | Favorites |
 | `/api/recent` | GET | Watch history |
+| `/api/epg?playlist=&channel=` | GET | EPG now/next (if epg_url set) |
 | `/api/stream?url=` | GET | HLS stream proxy |
 
 ## Uninstall
@@ -159,6 +160,18 @@ TVwhere/
 ./scripts/uninstall.sh    # Linux/macOS
 .\scripts\uninstall.ps1   # Windows
 ```
+
+## Inspired by open-source IPTV players
+
+TVwhere takes design ideas from these MIT/GPL projects (no proprietary code copied):
+
+| Project | What we adopted |
+|---------|-----------------|
+| [IPTVnator](https://github.com/4gray/iptvnator) | M3U + Xtream, EPG/XMLTV, group lists, favorites, PWA |
+| [Fred TV / open-tv](https://github.com/Fredolx/open-tv) | Multi-source playlists, fast search, refresh |
+| [OpenTV Player](https://github.com/jaccon/opentv-player) | Web server mode, HLS.js + stream proxy for mobile |
+| [Extreme-InfiniTV](https://github.com/infinitel8p/Extreme-InfiniTV) | Xtream login, category groups, cross-platform |
+| [iptv-org](https://github.com/iptv-org/iptv) | Free Bangladesh / Global M3U sources |
 
 ## License
 

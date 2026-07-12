@@ -3,6 +3,8 @@ import tkinter as tk
 import webbrowser
 from tkinter import messagebox
 
+from pathlib import Path
+
 from tvwhere.config import (
     THEME,
     PLAYLISTS,
@@ -16,7 +18,7 @@ from tvwhere.config import (
 )
 from tvwhere.history import HistoryManager
 from tvwhere.icons import apply_window_icon, load_logo
-from tvwhere.iptv import get_channels_async, clear_playlist_cache
+from tvwhere.iptv import get_channels_async, clear_playlist_cache, load_m3u_from_path
 from tvwhere.player import PlayerManager
 from tvwhere.search import filter_channels, sort_channels
 from tvwhere.service import PlaylistService
@@ -397,12 +399,25 @@ class TVwhereApp:
         self._reload_custom()
 
     def _reload_custom(self):
-        clear_playlist_cache(self._custom_url)
         gen = self._next_generation()
         self._show_loading(True, "Loading custom playlist")
         self.scroll_frame.clear()
         self._hide_empty()
         self.status_bar.set_status("Loading custom playlist...")
+
+        local = Path(self._custom_url).expanduser()
+        if local.is_file():
+            def worker():
+                try:
+                    channels = sort_channels(load_m3u_from_path(str(local)))
+                    self.root.after(0, self._on_custom_loaded, channels, False, gen)
+                except Exception as exc:
+                    self.root.after(0, self._on_playlist_error, str(exc), gen)
+
+            threading.Thread(target=worker, daemon=True).start()
+            return
+
+        clear_playlist_cache(self._custom_url)
 
         def on_ok(channels, from_cache=False, g=gen):
             self.root.after(0, self._on_custom_loaded, channels, from_cache, g)

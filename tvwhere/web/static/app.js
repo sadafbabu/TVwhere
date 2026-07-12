@@ -143,7 +143,11 @@ function renderChannels(channels) {
     name.textContent = ch.name;
     const meta = document.createElement("div");
     meta.className = "meta";
-    meta.textContent = [ch.group, ch.resolution].filter(Boolean).join(" · ");
+    meta.textContent = [
+      ch.radio ? "Radio" : null,
+      ch.group,
+      ch.resolution,
+    ].filter(Boolean).join(" · ");
     info.appendChild(name);
     info.appendChild(meta);
     row.appendChild(info);
@@ -174,12 +178,28 @@ async function toggleFavorite(ch, btn) {
   }
 }
 
+async function loadEpg(ch) {
+  if (!state.playlistId || !ch.id) return;
+  try {
+    const epg = await api(
+      `/api/epg?playlist=${encodeURIComponent(state.playlistId)}&channel=${encodeURIComponent(ch.id)}`
+    );
+    let text = ch.name;
+    if (epg.now && epg.now.title) {
+      text += ` — Now: ${epg.now.title}`;
+      if (epg.next && epg.next.title) text += ` | Next: ${epg.next.title}`;
+    }
+    nowPlaying.textContent = text;
+  } catch (_) {}
+}
+
 function playChannel(ch) {
   state.playingUrl = ch.url;
   nowPlaying.textContent = ch.name;
   playerPanel.classList.remove("hidden");
   renderChannels(state.channels);
   api("/api/play", { method: "POST", body: JSON.stringify({ channel: ch }) });
+  loadEpg(ch);
 
   const src = streamUrl(ch.url);
   if (state.hls) {
