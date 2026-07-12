@@ -45,7 +45,7 @@ brew install python-tk mpv
 ### Quick start (any OS)
 
 ```bash
-git clone https://github.com/SadafTiger/TVwhere.git
+git clone https://github.com/sadafbabu/TVwhere.git
 cd TVwhere
 python -m tvwhere
 ```
