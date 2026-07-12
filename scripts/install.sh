@@ -22,7 +22,7 @@ else
   echo "Note: pip install skipped (using PYTHONPATH launcher instead)."
 fi
 
-# Launcher always knows project root (fallback if pip install failed)
+# Desktop app launcher
 cat > "${BIN_DIR}/tvwhere" <<EOF
 #!/usr/bin/env bash
 export PYTHONPATH="${ROOT}:\${PYTHONPATH:-}"
@@ -31,15 +31,24 @@ exec python3 -m tvwhere "\$@" 2>/dev/null || exec python -m tvwhere "\$@"
 EOF
 chmod +x "${BIN_DIR}/tvwhere"
 
+# Web/mobile server launcher
+cat > "${BIN_DIR}/tvwhere-web" <<EOF
+#!/usr/bin/env bash
+export PYTHONPATH="${ROOT}:\${PYTHONPATH:-}"
+cd "${ROOT}"
+exec python3 -m tvwhere --web --open "\$@" 2>/dev/null || exec python -m tvwhere --web --open "\$@"
+EOF
+chmod +x "${BIN_DIR}/tvwhere-web"
+
 ICON="${ROOT}/assets/icon.png"
 
 cat > "${APP_DIR}/tvwhere.desktop" <<EOF
 [Desktop Entry]
-Version=1.1
+Version=2.0
 Type=Application
 Name=TVwhere
 GenericName=IPTV Player
-Comment=Minimalist IPTV Player
+Comment=Cross-platform IPTV Player
 Exec=env PYTHONPATH=${ROOT} python3 -m tvwhere
 Icon=${ICON}
 Terminal=false
@@ -48,12 +57,27 @@ Keywords=tv;iptv;live;stream;
 StartupWMClass=tvwhere
 EOF
 
+cat > "${APP_DIR}/tvwhere-web.desktop" <<EOF
+[Desktop Entry]
+Version=2.0
+Type=Application
+Name=TVwhere Web
+GenericName=IPTV Web Player
+Comment=TVwhere web UI for mobile and browser
+Exec=env PYTHONPATH=${ROOT} python3 -m tvwhere --web --open
+Icon=${ICON}
+Terminal=true
+Categories=AudioVideo;Video;Player;Network;
+Keywords=tv;iptv;mobile;pwa;
+EOF
+
 cp "${APP_DIR}/tvwhere.desktop" "${ROOT}/tvwhere.desktop"
 
 # Fix ownership if files were created as root
 if [ "$(id -u)" -eq 0 ] || [ "$REAL_USER" != "$USER" ]; then
   chown -R "${REAL_USER}:${REAL_USER}" \
-    "$ROOT" "$BIN_DIR/tvwhere" "$APP_DIR/tvwhere.desktop" \
+    "$ROOT" "$BIN_DIR/tvwhere" "$BIN_DIR/tvwhere-web" \
+    "$APP_DIR/tvwhere.desktop" "$APP_DIR/tvwhere-web.desktop" \
     "$CONFIG_DIR" "$CACHE_DIR" 2>/dev/null || true
 fi
 
@@ -61,7 +85,8 @@ if command -v update-desktop-database >/dev/null 2>&1; then
   sudo -u "$REAL_USER" update-desktop-database "$APP_DIR" 2>/dev/null || true
 fi
 
-echo "TVwhere installed."
-echo "  Project : ${ROOT}"
-echo "  Launch  : tvwhere"
-echo "  Icon    : ${ICON}"
+echo "TVwhere 2.0 installed."
+echo "  Project   : ${ROOT}"
+echo "  Desktop   : tvwhere"
+echo "  Web/Mobile: tvwhere-web"
+echo "  Icon      : ${ICON}"

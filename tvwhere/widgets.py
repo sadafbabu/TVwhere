@@ -93,8 +93,10 @@ class ScrollableFrame(tk.Frame):
             self.canvas.yview_scroll(-3, "units")
         elif event.num == 5:
             self.canvas.yview_scroll(3, "units")
-        else:
+        elif event.delta:
             delta = int(-1 * (event.delta / 120))
+            if delta == 0:
+                delta = -1 if event.delta > 0 else 1
             self.canvas.yview_scroll(delta * 3, "units")
 
     def clear(self):
@@ -105,10 +107,11 @@ class ScrollableFrame(tk.Frame):
 
 
 class SearchEntry(tk.Frame):
-    def __init__(self, parent, placeholder="Search channels...", on_change=None, *args, **kwargs):
+    def __init__(self, parent, placeholder="Search channels...", on_change=None, on_escape=None, *args, **kwargs):
         super().__init__(parent, bg=THEME["border"], bd=1, *args, **kwargs)
         self.placeholder = placeholder
         self.on_change = on_change
+        self.on_escape = on_escape
 
         inner = tk.Frame(self, bg=THEME["search_bg"])
         inner.pack(fill="both", expand=True, padx=1, pady=1)
@@ -149,6 +152,12 @@ class SearchEntry(tk.Frame):
         self.entry.configure(fg=THEME["fg_dim"])
         self.entry.bind("<FocusIn>", self._on_focus_in)
         self.entry.bind("<FocusOut>", self._on_focus_out)
+        self.entry.bind("<Escape>", self._on_escape_key)
+
+    def _on_escape_key(self, _event):
+        if self.on_escape:
+            return self.on_escape()
+        return None
 
     def _on_write(self, *_args):
         if not self.placeholder_active and self.on_change:
@@ -178,6 +187,10 @@ class SearchEntry(tk.Frame):
         self.var.set("")
         self._on_focus_out(None)
 
+    def focus(self):
+        self.entry.focus_set()
+        self._on_focus_in(None)
+
 
 class ChannelCard(tk.Frame):
     def __init__(
@@ -189,19 +202,34 @@ class ChannelCard(tk.Frame):
         is_fav,
         on_click,
         on_fav_toggle,
+        on_hover=None,
+        logo="",
         *args,
         **kwargs,
     ):
         super().__init__(parent, bg=THEME["bg_card"], cursor="hand2", *args, **kwargs)
         self.on_click = on_click
         self.on_fav_toggle = on_fav_toggle
+        self.on_hover = on_hover
         self.is_fav = is_fav
 
         self.pack_propagate(False)
-        self.configure(height=44)
+        self.configure(height=48)
 
         content = tk.Frame(self, bg=THEME["bg_card"])
         content.pack(fill="both", expand=True, padx=10, pady=5)
+
+        initial = (name.strip()[:1] or "?").upper()
+        avatar = tk.Label(
+            content,
+            text=initial,
+            bg=THEME["badge_bg"],
+            fg=THEME["fg_accent"],
+            font=FONTS["small"],
+            width=2,
+        )
+        avatar._skip_hover_bg = True
+        avatar.pack(side="left", padx=(0, 6))
 
         star = "★" if is_fav else "☆"
         star_color = THEME["fg_accent"] if is_fav else THEME["fg_dim"]
@@ -286,6 +314,8 @@ class ChannelCard(tk.Frame):
 
     def _on_enter(self, _event):
         set_bg_recursive(self, THEME["bg_hover"])
+        if self.on_hover:
+            self.on_hover()
 
     def _on_leave(self, _event):
         set_bg_recursive(self, THEME["bg_card"])
@@ -390,6 +420,10 @@ class LoadingIndicator(tk.Label):
         super().__init__(parent, text="Loading channels", *args, **kwargs)
         self.dots = 0
         self.running = False
+        self._message = "Loading channels"
+
+    def set_message(self, message: str):
+        self._message = message
 
     def start(self):
         self.running = True
@@ -402,7 +436,7 @@ class LoadingIndicator(tk.Label):
         if not self.running:
             return
         self.dots = (self.dots + 1) % 4
-        self.configure(text=f"Loading channels{'.' * self.dots}")
+        self.configure(text=f"{self._message}{'.' * self.dots}")
         self.after(400, self._animate)
 
 
@@ -471,9 +505,35 @@ class UrlDialog(tk.Toplevel):
         self.entry.focus_set()
         self.entry.bind("<Return>", lambda e: self._ok())
         self.entry.bind("<Escape>", lambda e: self._cancel())
+        self.entry.bind("<Key>", self._on_key)
+
+        self.error_label = tk.Label(
+            self,
+            text="",
+            bg=THEME["bg_secondary"],
+            fg=THEME["error_fg"],
+            font=FONTS["small"],
+            padx=20,
+        )
+        self.error_label.pack(anchor="w")
 
         btn_row = tk.Frame(self, bg=THEME["bg_secondary"], pady=14, padx=20)
         btn_row.pack(fill="x")
+
+        tk.Button(
+            btn_row,
+            text="Paste",
+            command=self._paste,
+            bg=THEME["bg_card"],
+            fg=THEME["fg_dim"],
+            activebackground=THEME["bg_hover"],
+            activeforeground=THEME["fg"],
+            relief="flat",
+            bd=0,
+            padx=14,
+            pady=4,
+            cursor="hand2",
+        ).pack(side="left")
 
         tk.Button(
             btn_row,
@@ -510,17 +570,33 @@ class UrlDialog(tk.Toplevel):
         y = parent.winfo_rooty() + (parent.winfo_height() // 2) - (self.winfo_height() // 2)
         self.geometry(f"+{x}+{y}")
 
+    def _on_key(self, _event):
+        self.entry.configure(fg=THEME["fg"])
+        self.error_label.configure(text="")
+        self.title("Custom Playlist")
+
+    def _paste(self):
+        try:
+            text = self.clipboard_get().strip()
+            if text:
+                self.entry.delete(0, tk.END)
+                self.entry.insert(0, text)
+                self._on_key(None)
+        except tk.TclError:
+            pass
+
     def _ok(self):
         value = self.entry.get().strip()
         if not value:
             self.destroy()
             return
-        if value.startswith("http://") or value.startswith("https://"):
+        if value.startswith(("http://", "https://", "rtmp://", "rtsp://")):
             self.result = value
             self.destroy()
             return
-        self.entry.configure(fg="#ff6b6b")
-        self.title("Custom Playlist — invalid URL")
+        self.entry.configure(fg=THEME["error_fg"])
+        self.error_label.configure(text="Enter a valid http(s) playlist URL.")
+        self.title("Custom Playlist")
 
     def _cancel(self):
         self.destroy()

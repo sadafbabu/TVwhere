@@ -2,3 +2,4 @@ include assets/*
 include LICENSE
 include README.md
 recursive-include tvwhere *.py
+recursive-include tvwhere/web/static *

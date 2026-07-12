@@ -1,33 +1,47 @@
 # TVwhere
 
-Minimalist IPTV player for **Windows, Linux, and macOS**.
+Cross-platform IPTV player for **Windows, Linux, macOS, and mobile** (phone/tablet browser).
 
-Pure Python + Tkinter. No pip dependencies. Streams open in **mpv** (recommended) or **VLC**.
+Inspired by open projects like [IPTVnator](https://github.com/4gray/iptvnator), [Fred TV](https://github.com/Fredolx/open-tv), and [OpenTV Player](https://github.com/jaccon/opentv-player) — built as pure Python with zero pip dependencies.
+
+- **Desktop app** — Tkinter UI, opens streams in **mpv** or **VLC**
+- **Web / PWA** — responsive UI with built-in HLS player; works on any phone on the same Wi-Fi
 
 ## Features
 
-- Black & gray UI — clean, readable, nothing flashy
-- Bangladesh / Bengali / Global playlists from [iptv-org](https://github.com/iptv-org/iptv)
-- Fast search — multi-word, accent-insensitive, debounced
-- Favorites saved locally
-- Lazy channel list (smooth with 10,000+ channels)
-- Custom M3U URL support
-- Playlist cache (1 hour) under your OS app-data folder
+### Desktop
+- Black & gray minimalist UI
+- Bangladesh / Bengali / Global playlists ([iptv-org](https://github.com/iptv-org/iptv))
+- **Group filter** — browse by category
+- **Recent channels** — watch history
+- Fast search — multi-word, accent-insensitive, relevance-ranked
+- Favorites, custom M3U URL
+- Playlist cache with offline stale fallback
+- Keyboard shortcuts: Ctrl+F search, Ctrl+R refresh, Esc clear
+- Remembers last tab between sessions
+
+### Web / Mobile (`tvwhere --web`)
+- Responsive UI — phone, tablet, desktop browser
+- **Install as PWA** on Android/iOS (Add to Home Screen)
+- Built-in **HLS player** (HLS.js) with stream proxy
+- **Channel logos** in list
+- **Group filter** dropdown
+- Add **M3U URL** or **Xtream Codes** playlists
+- Favorites & recent channels
+- Access from phone: `http://<your-pc-ip>:8765`
 
 ## Requirements
 
 | Platform | Python | Player |
 |----------|--------|--------|
-| Windows  | 3.8+ with tkinter | mpv or VLC |
-| Linux    | 3.8+ with tkinter | mpv or VLC |
-| macOS    | 3.8+ with tkinter | mpv or VLC |
+| Desktop  | 3.8+ with tkinter | mpv or VLC (recommended) |
+| Web/Mobile | 3.8+ only | Built-in browser player |
 
-### Install player
+### Install player (desktop external playback)
 
 **Windows**
 ```powershell
 winget install mpv
-# or download VLC from https://www.videolan.org/
 ```
 
 **Linux (Arch)**
@@ -40,85 +54,114 @@ sudo pacman -S python tk mpv
 brew install python-tk mpv
 ```
 
-## Run
-
-### Quick start (any OS)
+## Quick start
 
 ```bash
 git clone https://github.com/sadafbabu/TVwhere.git
 cd TVwhere
-python -m tvwhere
+python3 -m tvwhere          # desktop app
+python3 -m tvwhere --web --open   # web UI + open browser
 ```
 
-On Windows use `py -m tvwhere` if `python` is not on PATH.
+On Windows: `py -m tvwhere` or `py -m tvwhere --web --open`
 
-### Linux / macOS — app menu shortcut
+## Web / mobile mode
+
+Start the server on your PC:
 
 ```bash
-./scripts/install.sh
-tvwhere
+python3 -m tvwhere --web --port 8765
 ```
 
-### Windows — desktop shortcut
+Then on your phone (same Wi-Fi):
 
+1. Open `http://<PC-IP>:8765` (IP shown in terminal)
+2. Tap **Add playlist** (+) for M3U or Xtream Codes
+3. Tap a channel to play in-browser
+4. **Install PWA**: browser menu → Add to Home Screen
+
+### Xtream Codes
+
+In the web UI or API, add a playlist with:
+- Server URL (e.g. `http://provider:8080`)
+- Username & password
+
+TVwhere fetches live channels via the Xtream API (same method used by OTT Navigator / IPTVnator).
+
+## Desktop shortcuts
+
+| Key | Action |
+|-----|--------|
+| Ctrl+F | Focus search |
+| Ctrl+R | Refresh playlist |
+| Esc | Clear search |
+
+Sidebar **Web UI (mobile)** starts the server and opens the browser.
+
+## Install launcher
+
+**Linux / macOS**
+```bash
+./scripts/install.sh
+tvwhere              # desktop
+tvwhere-web          # web server
+```
+
+**Windows**
 ```powershell
 .\scripts\install.ps1
 tvwhere
+tvwhere-web
 ```
 
 ## Data locations
 
 | Data | Windows | Linux / macOS |
 |------|---------|---------------|
-| Favorites | `%APPDATA%\tvwhere\` | `~/.config/tvwhere/` |
+| Config / favorites | `%APPDATA%\tvwhere\` | `~/.config/tvwhere/` |
 | Cache | `%LOCALAPPDATA%\tvwhere\cache\` | `~/.cache/tvwhere/` |
-
-## Branding
-
-App icon and logo live in `assets/`:
-
-- `icon.svg` — source vector (black/gray TV + play)
-- `icon.png` / `icon-*.png` — PNG sizes for Linux desktop
-- `icon.ico` — Windows taskbar / shortcut
-
-Regenerate all sizes:
-
-```bash
-python3 scripts/generate_icons.py
-```
 
 ## Project layout
 
 ```
 TVwhere/
-├── assets/icon.png      App icon
-├── scripts/
-│   ├── install.sh       Linux / macOS launcher
-│   ├── install.ps1      Windows launcher
-│   └── uninstall.sh
-├── tvwhere/             Python package
-│   ├── app.py           Main window
-│   ├── config.py        Theme, paths, playlists
-│   ├── search.py        Search engine
-│   ├── iptv.py          M3U fetch + cache
-│   ├── player.py        mpv / VLC launcher
-│   └── widgets.py       UI components
-├── setup.py
+├── assets/              Icons (PNG, SVG, ICO)
+├── scripts/             install.sh, install.ps1
+├── tvwhere/
+│   ├── app.py           Desktop Tkinter app
+│   ├── api.py           Web server + REST API
+│   ├── web/static/      PWA frontend (HTML/JS/CSS)
+│   ├── xtream.py        Xtream Codes API
+│   ├── iptv.py          M3U parser + cache
+│   ├── service.py       Shared business logic
+│   ├── epg.py           XMLTV EPG parser
+│   ├── playlists.py     Multi-playlist manager
+│   ├── history.py       Recent channels
+│   └── player.py        mpv / VLC launcher
 └── README.md
 ```
 
-## Uninstall launcher
+## API (for custom clients)
 
-**Linux / macOS**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/playlists` | GET | List playlists |
+| `/api/playlists` | POST | Add M3U or Xtream |
+| `/api/playlists/{id}/channels` | GET | Channels (`?group=&q=`) |
+| `/api/playlists/{id}/groups` | GET | Category list |
+| `/api/favorites` | GET/POST | Favorites |
+| `/api/recent` | GET | Watch history |
+| `/api/stream?url=` | GET | HLS stream proxy |
+
+## Uninstall
+
 ```bash
-./scripts/uninstall.sh
-```
-
-**Windows**
-```powershell
-.\scripts\uninstall.ps1
+./scripts/uninstall.sh    # Linux/macOS
+.\scripts\uninstall.ps1   # Windows
 ```
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+Inspired by open-source IPTV projects; no proprietary code copied.

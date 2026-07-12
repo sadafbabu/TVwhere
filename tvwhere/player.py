@@ -27,6 +27,11 @@ class PlayerManager:
             if os.path.isfile("/opt/homebrew/bin/mpv"):
                 return "mpv"
 
+        if system == "Linux":
+            flatpak_mpv = "/var/lib/flatpak/exports/bin/io.mpv.Mpv"
+            if os.path.isfile(flatpak_mpv):
+                return "mpv"
+
         if os.name == "nt":
             local = os.environ.get("LOCALAPPDATA", "")
             candidates = [
@@ -48,6 +53,10 @@ class PlayerManager:
                 return ["mpv"]
             if platform.system() == "Darwin" and os.path.isfile("/opt/homebrew/bin/mpv"):
                 return ["/opt/homebrew/bin/mpv"]
+            if platform.system() == "Linux":
+                flatpak = "/var/lib/flatpak/exports/bin/io.mpv.Mpv"
+                if os.path.isfile(flatpak):
+                    return [flatpak]
             if os.name == "nt":
                 local = os.environ.get("LOCALAPPDATA", "")
                 for path in (
@@ -85,13 +94,22 @@ class PlayerManager:
         label = title or "TVwhere"
         if self._player == "mpv":
             args = self._player_cmd + [
+                "--no-terminal",
+                "--really-quiet",
                 "--force-window=immediate",
                 "--cache=yes",
                 f"--title={label}",
                 url,
             ]
         else:
-            args = self._player_cmd + ["--meta-title", label, url]
+            args = self._player_cmd + [
+                "--no-video-title-show",
+                "--intf",
+                "dummy",
+                "--meta-title",
+                label,
+                url,
+            ]
 
         try:
             kwargs = {
